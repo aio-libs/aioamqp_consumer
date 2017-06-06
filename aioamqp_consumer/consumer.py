@@ -1,7 +1,6 @@
 import asyncio
 import inspect
 import logging
-
 from functools import partial
 
 import aioamqp
