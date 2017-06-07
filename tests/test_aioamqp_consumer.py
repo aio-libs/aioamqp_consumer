@@ -17,11 +17,11 @@ def test_consumer(producer, loop):
     def task(payload, options, acc=None):
         acc.append(payload)
 
-    test_result = []
+    test_results = []
 
     consumer = Consumer(
         AMQP_URL,
-        partial(task, acc=test_result),
+        partial(task, acc=test_results),
         AMQP_QUEUE,
         loop=loop,
     )
@@ -30,3 +30,5 @@ def test_consumer(producer, loop):
 
     consumer.close()
     yield from consumer.wait_closed()
+
+    assert test_results == test_data

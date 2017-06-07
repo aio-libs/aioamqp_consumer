@@ -1,5 +1,6 @@
 import asyncio
 
+from .compat import PY_350
 from .mixins import AMQPMixin
 
 
@@ -27,33 +28,38 @@ class Producer(AMQPMixin):
 
         self._known_queues = set()
 
-    async def _ensure_queue(self, queue_name, **queue_kwargs):
-        async with self._ensure_queue_lock:
+    @asyncio.coroutine
+    def _ensure_queue(self, queue_name, **queue_kwargs):
+        with (yield from self._ensure_queue_lock):
             if queue_name in self._known_queues:
                 return
 
-            await self.queue_declare(queue_name, **queue_kwargs)
+            yield from self.queue_declare(queue_name, **queue_kwargs)
 
             self._known_queues.add(queue_name)
 
-    async def _connect(self):
-        async with self._connect_lock:
+    @asyncio.coroutine
+    def _connect(self):
+        with (yield from self._connect_lock):
             if not self._connected:
-                await super()._connect(self.amqp_url, **self.amqp_kwargs)
+                yield from super()._connect(self.amqp_url, **self.amqp_kwargs)
 
-    async def queue_declare(self, queue_name, **queue_kwargs):
+    @asyncio.coroutine
+    def queue_declare(self, queue_name, **queue_kwargs):
         try:
-            await self._connect()
+            yield from self._connect()
 
-            return await self._queue_declare(
+            result = yield from self._queue_declare(
                 queue_name=queue_name,
-                **queue_kwargs,
+                **queue_kwargs
             )
+            return result
         except:  # noqa
-            await self._disconnect()
+            yield from self._disconnect()
             raise
 
-    async def publish(
+    @asyncio.coroutine
+    def publish(
         self,
         payload,
 
@@ -64,18 +70,18 @@ class Producer(AMQPMixin):
         mandatory=True,
         immediate=False,
 
-        **queue_kwargs,
+        **queue_kwargs
     ):
         assert isinstance(payload, bytes)
 
         try:
             assert not self._closed, 'Cannot publish while closed'
 
-            await self._connect()
+            yield from self._connect()
 
-            await self._ensure_queue(queue_name, **queue_kwargs)
+            yield from self._ensure_queue(queue_name, **queue_kwargs)
 
-            return await self._basic_publish(
+            result = yield from self._basic_publish(
                 payload,
                 exchange_name=exchange_name,
                 routing_key=queue_name,
@@ -83,26 +89,32 @@ class Producer(AMQPMixin):
                 mandatory=mandatory,
                 immediate=immediate,
             )
+            return result
         except:  # noqa
-            await self._disconnect()
+            yield from self._disconnect()
             raise
 
-    async def _disconnect(self):
+    @asyncio.coroutine
+    def _disconnect(self):
         self._known_queues = set()
 
-        await super()._disconnect()
+        yield from super()._disconnect()
 
     def close(self):
         self._closed = True
 
-    async def wait_closed(self):
+    @asyncio.coroutine
+    def wait_closed(self):
         assert self._closed, 'Must be closed first'
 
-        await self._disconnect()
+        yield from self._disconnect()
 
-    async def __aenter__(self):  # noqa
-        return self
+    if PY_350:
+        @asyncio.coroutine
+        def __aenter__(self):  # noqa
+            return self
 
-    async def __aexit__(self, *exc_info):  # noqa
-        self.close()
-        await self.wait_closed()
+        @asyncio.coroutine
+        def __aexit__(self, *exc_info):  # noqa
+            self.close()
+            yield from self.wait_closed()
