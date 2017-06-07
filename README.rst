@@ -1,20 +1,20 @@
-aioelasticsearch
+aioamqp_consumer
 ================
 
-:info: aioelasticsearch-py wrapper for asyncio
+:info: Consumer/producer like library built over amqp (aioamqp)
 
-.. image:: https://img.shields.io/travis/wikibusiness/aioelasticsearch.svg
-    :target: https://travis-ci.org/wikibusiness/aioelasticsearch
+.. image:: https://img.shields.io/travis/wikibusiness/aioamqp_consumer.svg
+    :target: https://travis-ci.org/wikibusiness/aioamqp_consumer
 
-.. image:: https://img.shields.io/pypi/v/aioelasticsearch.svg
-    :target: https://pypi.python.org/pypi/aioelasticsearch
+.. image:: https://img.shields.io/pypi/v/aioamqp_consumer.svg
+    :target: https://pypi.python.org/pypi/aioamqp_consumer
 
 Installation
 ------------
 
 .. code-block:: shell
 
-    pip install aioelasticsearch
+    pip install aioamqp_consumer
 
 Usage
 -----
@@ -22,46 +22,35 @@ Usage
 .. code-block:: python
 
     import asyncio
+    from functools import partial
 
-    from aioelasticsearch import Elasticsearch
+    from aioamqp_consumer import Consumer, Producer
 
-    async def go():
-        es = Elasticsearch()
 
-        print(await es.search())
+    async def task(payload, options, sleep=0, *, loop):
+        await asyncio.sleep(sleep, loop=loop)
+        print(payload)
 
-        await es.close()
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(go())
-    loop.close()
+    async def main(loop):
+        amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
+        amqp_queue = 'your-queue-here'
+        async with Producer(amqp_url, loop=loop) as producer:
+            for _ in range(5):
+                await producer.publish(b'hello', amqp_queue, durable=True)
 
-Features
---------
-
-Asynchronous `scroll <https://www.elastic.co/guide/en/elasticsearch/reference/current/search-request-scroll.html>`_
-
-.. code-block:: python
-
-    import asyncio
-
-    from aioelasticsearch import Elasticsearch
-    from aioelasticsearch.helpers import Scan
-
-    async def go():
-        async with Elasticsearch() as es:
-            async with Scan(
-                es,
-                index='index',
-                doc_type='doc_type',
-                query={},
-            ) as scan:
-                print(scan.total)
-
-                async for scroll in scan:
-                    for doc in scroll:
-                        print(doc['_source'])
+        consumer = Consumer(
+            amqp_url,
+            partial(task, loop=loop, sleep=1),
+            amqp_queue,
+            loop=loop,
+        )
+        await consumer.scale(20)
+        await consumer.scale(5)
+        await consumer.join()
+        consumer.close()
+        await consumer.wait_closed()
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(go())
+    loop.run_until_complete(main(loop))
     loop.close()

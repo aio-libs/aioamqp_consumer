@@ -26,7 +26,7 @@ setup(
     author='wikibusiness',
     author_email='osf@wikibusiness.org',
     url='https://github.com/wikibusiness/aioamqp_consumer',
-    description='Consumer/producer framework built on aioamqp',
+    description='Consumer/producer like library built over amqp (aioamqp)',
     long_description=read('README.rst'),
     install_requires=[
         'aioamqp==0.10.0',
