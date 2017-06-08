@@ -95,6 +95,18 @@ class Producer(AMQPMixin):
             raise
 
     @asyncio.coroutine
+    def queue_purge(self, queue_name, no_wait=False):
+        try:
+            assert not self._closed, 'Cannot publish while closed'
+
+            yield from self._connect()
+
+            yield from self._queue_purge(queue_name, no_wait=no_wait)
+        except:  # noqa
+            yield from self._disconnect()
+            raise
+
+    @asyncio.coroutine
     def _disconnect(self):
         self._known_queues = set()
 

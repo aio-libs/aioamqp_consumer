@@ -27,6 +27,9 @@ class AMQPMixin:
 
     @asyncio.coroutine
     def _connect(self, url, on_error=None, **kwargs):
+        if self._connected:
+            return
+
         assert not self._closed, 'Already closed'
         assert self._transport is None
         assert self._protocol is None
@@ -87,6 +90,12 @@ class AMQPMixin:
         _queue_declare = self._channel.queue_declare(**kwargs)
 
         return (yield from asyncio.shield(_queue_declare, loop=self.loop))
+
+    @asyncio.coroutine
+    def _queue_purge(self, *args, **kwargs):
+        _queue_purge = self._channel.queue_purge(*args, **kwargs)
+
+        return (yield from asyncio.shield(_queue_purge, loop=self.loop))
 
     @asyncio.coroutine
     def _basic_reject(self, *args, **kwargs):

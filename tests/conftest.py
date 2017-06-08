@@ -30,6 +30,8 @@ def loop(request):
 def producer(loop):
     producer = Producer(AMQP_URL, loop=loop)
 
+    loop.run_until_complete(producer.queue_purge(AMQP_QUEUE))
+
     try:
         yield producer
     finally:
