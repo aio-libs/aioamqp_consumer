@@ -338,10 +338,7 @@ class Consumer(AMQPMixin):
             try:
                 yield from super()._connect(self.amqp_url, **self.amqp_kwargs)
 
-                yield from self._queue_declare(
-                    queue_name=self.queue_name,
-                    durable=True,
-                )
+                yield from self._queue_declare(queue_name=self.queue_name)
 
                 self._up.set()
 

@@ -12,7 +12,7 @@ from tests.conftest import AMQP_QUEUE, AMQP_URL
 def test_consumer(producer, loop):
     test_data = [b'test'] * 5
     for data in test_data:
-        yield from producer.publish(data, AMQP_QUEUE, durable=True)
+        yield from producer.publish(data, AMQP_QUEUE)
 
     def task(payload, options, acc=None):
         acc.append(payload)
