@@ -56,9 +56,9 @@ Usage
             amqp_kwargs=amqp_kwargs,
             loop=loop,
         )
-        await consumer.scale(20)
-        await consumer.scale(5)
-        await consumer.join()
+        await consumer.scale(20)  # scale up to 20 background coroutines
+        await consumer.scale(5)  # downscale to 5 background coroutines
+        await consumer.join()  # wait for rabbitmq queue is empty and all local messages are processed
         consumer.close()
         await consumer.wait_closed()
 
