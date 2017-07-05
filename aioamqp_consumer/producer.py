@@ -10,9 +10,12 @@ class Producer(AMQPMixin):
         self,
         amqp_url,
         *,
-        loop=None,
-        **amqp_kwargs
+        amqp_kwargs=None,
+        loop=None
     ):
+        if amqp_kwargs is None:
+            amqp_kwargs = {}
+
         if loop is None:
             loop = asyncio.get_event_loop()
 
@@ -29,12 +32,15 @@ class Producer(AMQPMixin):
         self._known_queues = set()
 
     @asyncio.coroutine
-    def _ensure_queue(self, queue_name, **queue_kwargs):
+    def _ensure_queue(self, queue_name, *, queue_kwargs):
         with (yield from self._ensure_queue_lock):
             if queue_name in self._known_queues:
                 return
 
-            yield from self.queue_declare(queue_name, **queue_kwargs)
+            yield from self.queue_declare(
+                queue_name,
+                queue_kwargs=queue_kwargs,
+            )
 
             self._known_queues.add(queue_name)
 
@@ -45,7 +51,10 @@ class Producer(AMQPMixin):
                 yield from super()._connect(self.amqp_url, **self.amqp_kwargs)
 
     @asyncio.coroutine
-    def queue_declare(self, queue_name, **queue_kwargs):
+    def queue_declare(self, queue_name, *, queue_kwargs=None):
+        if queue_kwargs is None:
+            queue_kwargs = {}
+
         try:
             yield from self._connect()
 
@@ -69,9 +78,12 @@ class Producer(AMQPMixin):
         properties=None,
         mandatory=True,
         immediate=False,
-
-        **queue_kwargs
+        *,
+        queue_kwargs=None
     ):
+        if queue_kwargs is None:
+            queue_kwargs = {}
+
         assert isinstance(payload, bytes)
 
         try:
@@ -79,7 +91,10 @@ class Producer(AMQPMixin):
 
             yield from self._connect()
 
-            yield from self._ensure_queue(queue_name, **queue_kwargs)
+            yield from self._ensure_queue(
+                queue_name,
+                queue_kwargs=queue_kwargs,
+            )
 
             result = yield from self._basic_publish(
                 payload,
@@ -95,13 +110,25 @@ class Producer(AMQPMixin):
             raise
 
     @asyncio.coroutine
-    def queue_purge(self, queue_name, no_wait=False):
+    def queue_purge(self, queue_name, **kwargs):
         try:
-            assert not self._closed, 'Cannot publish while closed'
+            assert not self._closed, 'Cannot purge while closed'
 
             yield from self._connect()
 
-            yield from self._queue_purge(queue_name, no_wait=no_wait)
+            yield from self._queue_purge(queue_name, **kwargs)
+        except:  # noqa
+            yield from self._disconnect()
+            raise
+
+    @asyncio.coroutine
+    def queue_delete(self, queue_name, **kwargs):
+        try:
+            assert not self._closed, 'Cannot delete while closed'
+
+            yield from self._connect()
+
+            yield from self._queue_delete(queue_name, **kwargs)
         except:  # noqa
             yield from self._disconnect()
             raise

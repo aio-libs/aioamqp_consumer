@@ -1,12 +1,10 @@
 import asyncio
 import logging
 
-from functools import partial
-
 import aioamqp
 import async_timeout
 
-from .compat import create_future, create_task, iscoroutine, PY_350
+from .compat import create_future, ensure_future, unpartial, PY_350
 from .exceptions import Ack, DeadLetter, Reject
 from .log import logger
 from .mixins import AMQPMixin
@@ -21,16 +19,26 @@ class Consumer(AMQPMixin):
         amqp_url,
         task,
         queue_name,
+        *,
         concurrency=1,
         tasks_per_worker=3,
         task_timeout=None,
         reconnect_delay=5.0,
         reject_exceptions=tuple(),
         dead_letter_exceptions=tuple(),
-        *,
-        loop=None,
-        **amqp_kwargs
+        queue_kwargs=None,
+        amqp_kwargs=None,
+        loop=None
     ):
+        if concurrency <= 0:
+            raise NotImplementedError
+
+        if queue_kwargs is None:
+            queue_kwargs = {}
+
+        if amqp_kwargs is None:
+            amqp_kwargs = {}
+
         if loop is None:
             loop = asyncio.get_event_loop()
 
@@ -47,6 +55,7 @@ class Consumer(AMQPMixin):
         self.reject_exceptions = reject_exceptions + (Reject,)
         self.dead_letter_exceptions = dead_letter_exceptions + (DeadLetter,)
 
+        self.queue_kwargs = queue_kwargs
         self.amqp_kwargs = amqp_kwargs
 
         self._queue = asyncio.Queue(loop=self.loop)
@@ -59,7 +68,7 @@ class Consumer(AMQPMixin):
         self._down.set()
         self._up = asyncio.Event(loop=self.loop)
 
-        self.__monitor = create_task(loop=self.loop)(self._monitor())
+        self.__monitor = ensure_future(self._monitor(), loop=self.loop)
 
     @asyncio.coroutine
     def _get_concurrency(self):
@@ -87,7 +96,7 @@ class Consumer(AMQPMixin):
         return self._consume_callback_fut
 
     def _add_worker(self):
-        worker = create_task(loop=self.loop)(self._worker())
+        worker = ensure_future(self._worker(), loop=self.loop)
 
         self._workers.add(worker)
 
@@ -109,6 +118,8 @@ class Consumer(AMQPMixin):
 
         try:
             yield from worker
+        except asyncio.CancelledError:
+            pass
         except aioamqp.AioamqpException as exc:
             logger.debug(
                 'Worker (queue: {queue}) faced connection problems'.format(
@@ -125,29 +136,17 @@ class Consumer(AMQPMixin):
             ),
         )
 
-    def _log_task(
-        self,
-        status,
-        delivery_tag,
-        lvl=logging.DEBUG,
-    ):
+    def _log_task(self, status, lvl=logging.DEBUG):
         logger.log(
             lvl,
-            'Task (queue: {queue},  tag: {delivery_tag}) {status}'  # noqa
-            .format(
+            'Task (queue: {queue}): {status}'.format(
                 queue=self.queue_name,
-                delivery_tag=delivery_tag,
                 status=status,
             ),
         )
 
     @asyncio.coroutine
     def _run_task(self, payload, properties, delivery_tag):
-        log = partial(
-            self._log_task,
-            delivery_tag=delivery_tag,
-        )
-
         try:
             try:
                 _task = self.task(payload, properties)
@@ -156,7 +155,7 @@ class Consumer(AMQPMixin):
             except self.dead_letter_exceptions as exc:
                 raise DeadLetter from exc
 
-            if not iscoroutine(_task):
+            if not asyncio.iscoroutinefunction(unpartial(self.task)):
                 if self.task_timeout is not None:
                     raise NotImplementedError
 
@@ -179,24 +178,24 @@ class Consumer(AMQPMixin):
                 if task_timeout:
                     raise
 
-                log('timeouted', logging.WARNING)
+                self._log_task('timeouted', logging.WARNING)
                 return self._basic_reject(delivery_tag, requeue=True)
         except Ack:
             pass
         except DeadLetter:
-            log('dead lettered')
+            self._log_task('dead lettered')
             return self._basic_reject(delivery_tag, requeue=False)
         except Reject:
-            log('rejected')
+            self._log_task('rejected')
             return self._basic_reject(delivery_tag, requeue=True)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            log('errored', lvl=logging.WARNING)
+            self._log_task('errored', lvl=logging.WARNING)
             logger.warning(exc, exc_info=exc)
             return self._basic_client_ack(delivery_tag)
 
-        log(status='successfully finished')
+        self._log_task(status='successfully finished')
         return self._basic_client_ack(delivery_tag)
 
     @asyncio.coroutine
@@ -303,7 +302,8 @@ class Consumer(AMQPMixin):
         ))
 
     @asyncio.coroutine
-    def join(self, delay=1, timeout=None, wait_ok=True, **queue_kwargs):
+    def join(self, delay=1, timeout=None, wait_ok=True):
+        queue_kwargs = self.queue_kwargs.copy()
         queue_kwargs.setdefault('passive', True)
 
         with async_timeout.timeout(timeout, loop=self.loop):
@@ -318,7 +318,7 @@ class Consumer(AMQPMixin):
 
                     queue = yield from self._queue_declare(
                         queue_name=self.queue_name,
-                        **queue_kwargs
+                        **self.queue_kwargs
                     )
                 except aioamqp.AioamqpException as exc:
                     logger.warning(
@@ -338,7 +338,10 @@ class Consumer(AMQPMixin):
             try:
                 yield from super()._connect(self.amqp_url, **self.amqp_kwargs)
 
-                yield from self._queue_declare(queue_name=self.queue_name)
+                yield from self._queue_declare(
+                    queue_name=self.queue_name,
+                    **self.queue_kwargs
+                )
 
                 self._up.set()
 
@@ -444,11 +447,7 @@ class Consumer(AMQPMixin):
             if self._channel is not None:
                 if self._consumer_tag is not None:
                     try:
-                        _basic_cancel = self._channel.basic_cancel(
-                            self._consumer_tag,
-                        )
-
-                        yield from asyncio.shield(_basic_cancel, loop=self.loop)
+                        yield from self._basic_cancel(self._consumer_tag)
                     except aioamqp.AioamqpException:
                         pass
 

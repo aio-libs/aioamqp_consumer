@@ -32,17 +32,28 @@ Usage
         print(payload)
 
 
-    async def main(loop):
+    async def main(*, loop):
         amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
         amqp_queue = 'your-queue-here'
-        async with Producer(amqp_url, loop=loop) as producer:
+        queue_kwargs = {
+            'durable': True,
+        }
+        amqp_kwargs = {}  # https://aioamqp.readthedocs.io/en/latest/api.html#aioamqp.connect
+
+        async with Producer(amqp_url, amqp_kwargs=amqp_kwargs, loop=loop) as producer:
             for _ in range(5):
-                await producer.publish(b'hello', amqp_queue, durable=True)
+                await producer.publish(
+                    b'hello',
+                    amqp_queue,
+                    queue_kwargs=queue_kwargs,
+                )
 
         consumer = Consumer(
             amqp_url,
             partial(task, loop=loop, sleep=1),
             amqp_queue,
+            queue_kwargs=queue_kwargs,
+            amqp_kwargs=amqp_kwargs,
             loop=loop,
         )
         await consumer.scale(20)
@@ -52,5 +63,5 @@ Usage
         await consumer.wait_closed()
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(loop))
+    loop.run_until_complete(main(loop=loop))
     loop.close()

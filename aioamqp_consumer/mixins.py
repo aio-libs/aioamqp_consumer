@@ -98,6 +98,12 @@ class AMQPMixin:
         return (yield from asyncio.shield(_queue_purge, loop=self.loop))
 
     @asyncio.coroutine
+    def _queue_delete(self, *args, **kwargs):
+        _queue_delete = self._channel.queue_delete(*args, **kwargs)
+
+        return (yield from asyncio.shield(_queue_delete, loop=self.loop))
+
+    @asyncio.coroutine
     def _basic_reject(self, *args, **kwargs):
         _basic_reject = self._channel.basic_reject(*args, **kwargs)
 
@@ -126,3 +132,9 @@ class AMQPMixin:
         _basic_publish = self._channel.basic_publish(*args, **kwargs)
 
         return (yield from asyncio.shield(_basic_publish, loop=self.loop))
+
+    @asyncio.coroutine
+    def _basic_cancel(self, *args, **kwargs):
+        _basic_cancel = self._channel.basic_cancel(*args, **kwargs)
+
+        return (yield from asyncio.shield(_basic_cancel, loop=self.loop))

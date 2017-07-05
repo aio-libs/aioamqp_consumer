@@ -18,25 +18,23 @@ def loop(request):
 
     request.addfinalizer(lambda: asyncio.set_event_loop(None))
 
-    try:
-        yield loop
-    finally:
-        loop.call_soon(loop.stop)
-        loop.run_forever()
-        loop.close()
+    yield loop
+
+    loop.call_soon(loop.stop)
+    loop.run_forever()
+    loop.close()
 
 
 @pytest.fixture
 def producer(loop):
     producer = Producer(AMQP_URL, loop=loop)
 
-    loop.run_until_complete(producer.queue_purge(AMQP_QUEUE))
+    loop.run_until_complete(producer.queue_delete(AMQP_QUEUE))
 
-    try:
-        yield producer
-    finally:
-        producer.close()
-        loop.run_until_complete(producer.wait_closed())
+    yield producer
+
+    producer.close()
+    loop.run_until_complete(producer.wait_closed())
 
 
 @pytest.mark.tryfirst

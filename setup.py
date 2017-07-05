@@ -29,7 +29,8 @@ setup(
     description='Consumer/producer like library built over amqp (aioamqp)',
     long_description=read('README.rst'),
     install_requires=[
-        'aioamqp==0.10.0',
+        'aioamqp>=0.10.0',
+        'async_timeout',
     ],
     packages=['aioamqp_consumer'],
     include_package_data=True,
