@@ -191,6 +191,9 @@ class Producer(AMQPMixin):
             await self._connect()
 
             await self._queue_unbind(queue_name, exchange_name, routing_key, **kwargs)
+
+            if queue_name in self._binded_queues:
+                self._binded_queues.remove(queue_name)
         except:  # noqa
             await self._disconnect()
             raise
@@ -202,6 +205,13 @@ class Producer(AMQPMixin):
             await self._connect()
 
             await self._queue_delete(queue_name, **kwargs)
+
+            if queue_name in self._known_queues:
+                self._known_queues.remove(queue_name)
+
+            # Remove also from binded
+            if queue_name in self._binded_queues:
+                self._binded_queues.remove(queue_name)
         except:  # noqa
             await self._disconnect()
             raise
@@ -213,6 +223,9 @@ class Producer(AMQPMixin):
             await self._connect()
 
             await self._exchange_delete(exchange_name, **kwargs)
+
+            if exchange_name in self._known_exchanges:
+                self._known_exchanges.remove(exchange_name)
         except:  # noqa
             await self._disconnect()
             raise
