@@ -130,7 +130,7 @@ class Producer(AMQPMixin):
             immediate=False,
             *,
             queue_kwargs=None,
-            exchange_kwargs=None,
+            exchange_kwargs=None
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
