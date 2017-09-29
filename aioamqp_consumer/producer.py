@@ -6,11 +6,11 @@ from .mixins import AMQPMixin
 class Producer(AMQPMixin):
 
     def __init__(
-        self,
-        amqp_url,
-        *,
-        amqp_kwargs=None,
-        loop=None
+            self,
+            amqp_url,
+            *,
+            amqp_kwargs=None,
+            loop=None
     ):
         if amqp_kwargs is None:
             amqp_kwargs = {}
@@ -117,27 +117,29 @@ class Producer(AMQPMixin):
 
             self._binded_queues.add(queue_name)
 
-
     async def publish(
-        self,
-        payload,
+            self,
+            payload,
 
-        queue_name,
-        exchange_name,
-        routing_key='',
+            queue_name,
+            exchange_name='default',
+            routing_key='',
 
-        properties=None,
-        mandatory=False,  # set False because of bug https://github.com/Polyconseil/aioamqp/issues/140
-        immediate=False,
-        *,
-        queue_kwargs=None,
-        exchange_kwargs=None,
+            properties=None,
+            mandatory=False,  # set False because of bug https://github.com/Polyconseil/aioamqp/issues/140
+            immediate=False,
+            *,
+            queue_kwargs=None,
+            exchange_kwargs=None,
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
 
         if exchange_kwargs is None:
-            exchange_kwargs = {}
+            # Default exchange type is 'DIRECT'
+            exchange_kwargs = {
+                'type_name': 'direct'
+            }
 
         assert isinstance(payload, bytes)
 
