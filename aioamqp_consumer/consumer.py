@@ -118,6 +118,8 @@ class Consumer(AMQPMixin):
             await worker
         except asyncio.CancelledError:
             pass
+        except Exception as exc:
+            logger.exception(exc)
         except aioamqp.AioamqpException as exc:
             logger.debug(
                 'Worker (queue: {queue}) faced connection problems'.format(
