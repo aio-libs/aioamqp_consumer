@@ -60,7 +60,11 @@ class Producer(AMQPMixin):
     async def _ensure_queue_bind(self, queue_name, exchange_name,
                                  routing_key=''):
         async with self._ensure_bind_queue_lock:
-            if queue_name in self._binded_queues:
+            routing_key = routing_key if routing_key else queue_name
+
+            key = (queue_name, exchange_name, routing_key)
+
+            if key in self._binded_queues:
                 return
 
             try:
@@ -68,13 +72,13 @@ class Producer(AMQPMixin):
                 await self._queue_bind(
                     queue_name=queue_name,
                     exchange_name=exchange_name,
-                    routing_key=routing_key
+                    routing_key=routing_key if routing_key else queue_name
                 )
             except:  # noqa
                 await self._disconnect()
                 raise
 
-            self._binded_queues.add(queue_name)
+            self._binded_queues.add(key)
 
     async def _connect(self):
         async with self._connect_lock:
@@ -159,7 +163,7 @@ class Producer(AMQPMixin):
             return await self._basic_publish(
                 payload,
                 exchange_name=exchange_name,
-                routing_key=routing_key,
+                routing_key=routing_key if routing_key else queue_name,
                 properties=properties,
                 mandatory=mandatory,
                 immediate=immediate,
