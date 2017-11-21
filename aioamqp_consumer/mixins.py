@@ -88,6 +88,16 @@ class AMQPMixin:
 
         return await asyncio.shield(_queue_declare, loop=self.loop)
 
+    async def _queue_bind(self, *args, **kwargs):
+        _queue_bind = self._channel.queue_bind(*args, **kwargs)
+
+        return await asyncio.shield(_queue_bind, loop=self.loop)
+
+    async def _queue_unbind(self, *args, **kwargs):
+        _queue_unbind = self._channel.queue_unbind(*args, **kwargs)
+
+        return await asyncio.shield(_queue_unbind, loop=self.loop)
+
     async def _queue_purge(self, *args, **kwargs):
         _queue_purge = self._channel.queue_purge(*args, **kwargs)
 
@@ -97,6 +107,26 @@ class AMQPMixin:
         _queue_delete = self._channel.queue_delete(*args, **kwargs)
 
         return await asyncio.shield(_queue_delete, loop=self.loop)
+
+    async def _exchange_declare(self, *args, **kwargs):
+        _exchange_declare = self._channel.exchange_declare(*args, **kwargs)
+
+        return await asyncio.shield(_exchange_declare, loop=self.loop)
+
+    async def _exchange_delete(self, *args, **kwargs):
+        _exchange_delete = self._channel.exchange_delete(*args, **kwargs)
+
+        return await asyncio.shield(_exchange_delete, loop=self.loop)
+
+    async def _exchange_bind(self, *args, **kwargs):
+        _exchange_bind = self._channel.exchange_bind(*args, **kwargs)
+
+        return await asyncio.shield(_exchange_bind, loop=self.loop)
+
+    async def _exchange_unbind(self, *args, **kwargs):
+        _exchange_unbind = self._channel.exchange_unbind(*args, **kwargs)
+
+        return await asyncio.shield(_exchange_unbind, loop=self.loop)
 
     async def _basic_reject(self, *args, **kwargs):
         _basic_reject = self._channel.basic_reject(*args, **kwargs)
