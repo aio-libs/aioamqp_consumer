@@ -4,10 +4,10 @@ import logging
 import aioamqp
 import async_timeout
 
-from .compat import create_future, unpartial
 from .exceptions import Ack, DeadLetter, Reject
 from .log import logger
 from .mixins import AMQPMixin
+from .utils import unpartial
 
 
 class Consumer(AMQPMixin):
@@ -62,7 +62,7 @@ class Consumer(AMQPMixin):
         self._workers = set()
         self._scale_lock = asyncio.Lock(loop=self.loop)
         self._stop_lock = asyncio.Lock(loop=self.loop)
-        self._consume_callback_fut = create_future(loop=self.loop)
+        self._consume_callback_fut = self.loop.create_future()
         self._consume_callback_fut.set_result(None)
         self._down = asyncio.Event(loop=self.loop)
         self._down.set()
@@ -101,13 +101,13 @@ class Consumer(AMQPMixin):
 
         worker.add_done_callback(self._workers.remove)
 
-        logger.debug(
-            'Added worker for queue: {queue}. Workers number is {workers}'
-            .format(
-                queue=self.queue_name,
-                workers=len(self._workers),
-            ),
-        )
+        msg = 'Added worker for queue: %(queue)s. ' \
+              'Workers number is %(workers)s'
+        context = {
+            'queue': self.queue_name,
+            'workers': len(self._workers)
+        }
+        logger.debug(msg, context)
 
     async def _remove_worker(self):
         worker = next(iter(self._workers))
@@ -118,30 +118,31 @@ class Consumer(AMQPMixin):
             await worker
         except asyncio.CancelledError:
             pass
+        except Exception as exc:
+            msg = 'Worker (queue: %(queue)%) errored during removing'
+            context = {'queue': self.queue_name}
+            logger.exception(msg, context, exc_info=exc)
         except aioamqp.AioamqpException as exc:
-            logger.debug(
-                'Worker (queue: {queue}) faced connection problems'.format(
-                    queue=self.queue_name,
-                ),
-                exc_info=exc,
-            )
+            msg = 'Worker (queue: %(queue)%) ' \
+                  'faced connection problems during removing'
+            context = {'queue': self.queue_name}
+            logger.debug(msg, context, exc_info=exc)
 
-        logger.debug(
-            'Removed worker for queue: {queue}. Workers number is {workers}'
-            .format(
-                queue=self.queue_name,
-                workers=len(self._workers),
-            ),
-        )
+        msg = 'Removed worker for queue: %(queue)s. ' \
+              'Workers number is %(workers)s'
+        context = {
+            'queue': self.queue_name,
+            'workers': len(self._workers),
+        }
+        logger.debug(msg, context)
 
-    def _log_task(self, status, lvl=logging.DEBUG):
-        logger.log(
-            lvl,
-            'Task (queue: {queue}): {status}'.format(
-                queue=self.queue_name,
-                status=status,
-            ),
-        )
+    def _log_task(self, status, lvl=logging.DEBUG, exc_info=False):
+        msg = 'Task (queue: %(queue)s): %(status)s)'
+        context = {
+            'queue': self.queue_name,
+            'status': status,
+        }
+        logger.log(lvl, msg, context, exc_info=exc_info)
 
     async def _run_task(self, payload, properties, delivery_tag):
         try:
@@ -158,11 +159,11 @@ class Consumer(AMQPMixin):
 
                 raise Ack
 
-            task_timeout = False
-
             try:
-                async with async_timeout.timeout(self.task_timeout,
-                                                 loop=self.loop):
+                async with async_timeout.timeout(
+                    self.task_timeout,
+                    loop=self.loop,
+                ) as cm:
                     try:
                         await _task
                     except self.reject_exceptions as exc:
@@ -170,10 +171,9 @@ class Consumer(AMQPMixin):
                     except self.dead_letter_exceptions as exc:
                         raise DeadLetter from exc
                     except asyncio.TimeoutError:
-                        task_timeout = True
                         raise
             except asyncio.TimeoutError as exc:
-                if task_timeout:
+                if cm.expired:
                     raise
 
                 self._log_task('timeouted', logging.WARNING)
@@ -189,41 +189,54 @@ class Consumer(AMQPMixin):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._log_task('errored', lvl=logging.WARNING)
-            logger.warning(exc, exc_info=exc)
+            self._log_task('errored', lvl=logging.ERROR, exc_info=exc)
             return self._basic_client_ack(delivery_tag)
 
-        self._log_task(status='successfully finished')
+        self._log_task('successfully finished')
         return self._basic_client_ack(delivery_tag)
 
     async def _worker(self):
         while True:
-            delivery_tag, finalizer = None, None
             try:
+                finalizer = delivery_tag = None
                 payload, envelope, properties = await self._queue.get()
                 delivery_tag = envelope.delivery_tag
 
                 try:
-                    finalizer = await self._run_task(
+                    coro = await self._run_task(
                         payload,
                         properties,
                         delivery_tag,
                     )
 
-                    await finalizer
+                    finalizer = self.loop.create_task(coro)
+
+                    await asyncio.shield(finalizer, loop=self.loop)
                 finally:
                     self._queue.task_done()
             except asyncio.CancelledError:
-                if (
-                    delivery_tag is not None and
-                    finalizer is None and
-                    not self._down.is_set()
-                ):
-                    await self._basic_reject(delivery_tag, requeue=True)
+                msg = 'Worker (queue: %(queue)s) is cancelled'
+                context = {'queue': self.queue_name}
+                logger.debug(msg, context)
 
-                logger.debug('Worker (queue: {queue}) is cancelled'.format(
-                    queue=self.queue_name,
-                ))
+                if finalizer is not None:
+                    if not finalizer.done():
+                        msg = 'Worker (queue: %(queue)s) doing ' \
+                              'finalization while cancellation'
+                        context = {'queue': self.queue_name}
+                        logger.debug(msg, context)
+                        await finalizer
+
+                    break
+
+                if self._down.is_set():
+                    break
+
+                if delivery_tag is not None:
+                    msg = 'Worker (queue: %(queue)s) doing ' \
+                          'basic reject due cancellation'
+                    context = {'queue': self.queue_name}
+                    await self._basic_reject(delivery_tag, requeue=True)
 
                 break
 
@@ -255,12 +268,12 @@ class Consumer(AMQPMixin):
             # for initial scale, compare to real amount of workers
             current_concurrency = len(self._workers)
 
-            logger.debug(
-                'Scaling workers from {prev_conc} to {next_conc}'.format(
-                    prev_conc=current_concurrency,
-                    next_conc=concurrency,
-                ),
-            )
+            msg = 'Scaling workers from %(prev_conc)s to %(next_conc)s'
+            context = {
+                'prev_conc': current_concurrency,
+                'next_conc': concurrency,
+            }
+            logger.debug(msg, context)
 
             self._concurrency = concurrency
 
@@ -273,13 +286,11 @@ class Consumer(AMQPMixin):
                         connection_global=True,
                     )
                 except aioamqp.AioamqpException as exc:
-                    logger.warning(
-                        'Connection problem during consumer scale '
-                        '(queue: {queue}). Not scaled. Scale will be performed'
-                        ' by monitor on next iteration'.format(
-                            queue=self.queue_name,
-                        ),
-                    )
+                    msg = 'Connection problem during consumer scale ' \
+                          '(queue: %(queue)s). Not scaled. Scale will be ' \
+                          'performed by monitor on next iteration'
+                    context = {'queue': self.queue_name}
+                    logger.warning(msg, context, exc_info=exc)
                     return
 
             if current_concurrency > self._concurrency:
@@ -291,10 +302,12 @@ class Consumer(AMQPMixin):
 
             assert len(self._workers) == self._concurrency
 
-        logger.debug('Scaled workers from {prev_conc} to {curr_conc}'.format(
-            prev_conc=current_concurrency,
-            curr_conc=self._concurrency,
-        ))
+        msg = 'Scaled workers from %(prev_conc)s to %(curr_conc)s'
+        context = {
+            'prev_conc': current_concurrency,
+            'curr_conc': self._concurrency,
+        }
+        logger.debug(msg, context)
 
     async def join(self, delay=1, timeout=None, wait_ok=True):
         queue_kwargs = self.queue_kwargs.copy()
@@ -312,15 +325,13 @@ class Consumer(AMQPMixin):
 
                     queue = await self._queue_declare(
                         queue_name=self.queue_name,
-                        **self.queue_kwargs
+                        **queue_kwargs
                     )
                 except aioamqp.AioamqpException as exc:
-                    logger.warning(
-                        'Connection error during join in consumer '
-                        '(queue: {queue}).'.format(
-                            queue=self.queue_name,
-                        ),
-                    )
+                    msg = 'Connection error during join in consumer ' \
+                          '(queue: %(queue)s).'
+                    context = {'queue': self.queue_name}
+                    logger.warning(msg, context, exc_ifo=exc)
                     continue
                 else:
                     if queue['message_count'] == 0 and self._queue.empty():
@@ -338,21 +349,15 @@ class Consumer(AMQPMixin):
 
                 self._up.set()
 
-                logger.debug(
-                    'Consumer (queue: {queue}) connected to amqp'.format(
-                        queue=self.queue_name,
-                    ),
-                )
+                msg = 'Consumer (queue: %(queue)s) connected to amqp'
+                context = {'queue': self.queue_name}
+                logger.debug(msg, context)
 
                 break
             except aioamqp.AioamqpException as exc:
-                logger.warning(
-                    'Cannot connect to amqp. Reconnect in {delay} seconds'
-                    .format(
-                        delay=self.reconnect_delay,
-                    ),
-                    exc_info=True,
-                )
+                msg = 'Cannot connect to amqp. Reconnect in %(delay)s seconds'
+                context = {'delay': self.reconnect_delay}
+                logger.warning(msg, context, exc_info=exc)
 
                 await asyncio.sleep(self.reconnect_delay, loop=self.loop)
 
@@ -380,18 +385,18 @@ class Consumer(AMQPMixin):
 
         self._down.clear()
 
-        logger.debug('Consumer (queue: {queue}) started consuming'.format(
-            queue=self.queue_name,
-        ))
+        msg = 'Consumer (queue: %(queue)s) started consuming'
+        context = {'queue': self.queue_name}
+        logger.debug(msg, context)
 
     async def _stop(self, cancel_workers=True, flush_queue=True):
         async with self._stop_lock:
             if self._up.is_set():
                 self._up.clear()
 
-            logger.debug('Consumer (queue: {queue}) is stopped'.format(
-                queue=self.queue_name,
-            ))
+            msg = 'Consumer (queue: %(queue)s) is stopped'
+            context = {'queue': self.queue_name}
+            logger.debug(msg, context)
 
             async with self._scale_lock:
                 if cancel_workers:
@@ -399,9 +404,10 @@ class Consumer(AMQPMixin):
 
                 if self._workers:
                     await asyncio.gather(*self._workers, loop=self.loop)
-                logger.debug('All workers (queue: {queue}) are stopped'.format(
-                    queue=self.queue_name,
-                ))
+
+                msg = 'All workers (queue: %(queue)s) are stopped'
+                context = {'queue': self.queue_name}
+                logger.debug(msg, context)
 
                 if flush_queue:
                     while self._queue.qsize():
@@ -411,9 +417,9 @@ class Consumer(AMQPMixin):
             await self._disconnect()
 
     def __cancel_workers(self):
-        logger.debug('Stopping consumer workers (queue: {queue})'.format(
-            queue=self.queue_name,
-        ))
+        msg = 'Stopping consumer workers (queue: %(queue)s)'
+        context = {'queue': self.queue_name}
+        logger.debug(msg, context)
 
         for worker in self._workers:
             assert not worker.cancelled(), 'Stopped worker detected'
@@ -440,20 +446,17 @@ class Consumer(AMQPMixin):
                     except aioamqp.AioamqpException:
                         pass
 
-                    logger.debug(
-                        'Consumer (queue: {queue}) stopped consuming'.format(
-                            queue=self.queue_name,
-                        ),
-                    )
+                    msg = 'Consumer (queue: %(queue)s) stopped consuming'
+                    context = {'queue': self.queue_name}
+                    logger.debug(msg, context)
 
         self._consumer_tag = None
 
         await super()._disconnect()
 
-        logger.debug(
-            'Consumer (queue: {queue}) disconnected from amqp'.format(
-                queue=self.queue_name,
-            ))
+        msg = 'Consumer (queue: %(queue)s) disconnected from amqp'
+        context = {'queue': self.queue_name}
+        logger.debug(msg, context)
 
     def close(self):
         assert not self._closed, 'Already closed'
@@ -463,9 +466,9 @@ class Consumer(AMQPMixin):
         self.__monitor.cancel()
         self.__cancel_workers()
 
-        logger.debug('Consumer (queue: {queue}) is closing'.format(
-            queue=self.queue_name,
-        ))
+        msg = 'Consumer (queue: %(queue)s) is closing'
+        context = {'queue': self.queue_name}
+        logger.debug(msg, context)
 
     async def wait_closed(self):
         assert self._closed, 'Must be closed first'
@@ -479,9 +482,9 @@ class Consumer(AMQPMixin):
 
         await self._consume_callback_fut
 
-        logger.debug('Consumer (queue: {queue}) closed'.format(
-            queue=self.queue_name,
-        ))
+        msg = 'Consumer (queue: %(queue)s) was closed'
+        context = {'queue': self.queue_name}
+        logger.debug(msg, context)
 
     async def __aenter__(self):  # noqa
         return self
