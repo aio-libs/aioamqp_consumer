@@ -330,7 +330,7 @@ class Consumer(AMQPMixin):
 
                     queue = await self._queue_declare(
                         queue_name=self.queue_name,
-                        **self.queue_kwargs
+                        **queue_kwargs
                     )
                 except aioamqp.AioamqpException as exc:
                     logger.warning(
