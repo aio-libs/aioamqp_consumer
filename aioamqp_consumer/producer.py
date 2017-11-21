@@ -25,17 +25,12 @@ class Producer(AMQPMixin):
         self.amqp_kwargs = amqp_kwargs
 
         self._connect_lock = asyncio.Lock(loop=self.loop)
-
         self._ensure_queue_lock = asyncio.Lock(loop=self.loop)
-
         self._ensure_exchange_lock = asyncio.Lock(loop=self.loop)
-
-        self._bind_queue_lock = asyncio.Lock(loop=self.loop)
+        self._ensure_bind_queue_lock = asyncio.Lock(loop=self.loop)
 
         self._known_queues = set()
-
         self._known_exchanges = set()
-
         self._binded_queues = set()
 
     async def _ensure_queue(self, queue_name, *, queue_kwargs):
@@ -64,7 +59,7 @@ class Producer(AMQPMixin):
 
     async def _ensure_queue_bind(self, queue_name, exchange_name,
                                  routing_key=''):
-        async with self._bind_queue_lock:
+        async with self._ensure_bind_queue_lock:
             if queue_name in self._binded_queues:
                 return
 

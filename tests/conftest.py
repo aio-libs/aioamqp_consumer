@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import gc
+import os
 import socket
 import time
 import uuid
@@ -23,17 +24,15 @@ def unused_port():
 @pytest.fixture
 def event_loop(request):
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    loop.set_debug(bool(os.environ.get('PYTHONASYNCIODEBUG')))
 
     yield loop
 
-    if not loop._closed:
-        loop.call_soon(loop.stop)
-        loop.run_forever()
-        loop.close()
+    loop.call_soon(loop.stop)
+    loop.run_forever()
+    loop.close()
 
     gc.collect()
-    asyncio.set_event_loop(None)
 
 
 @pytest.fixture
@@ -145,8 +144,6 @@ def amqp_queue_name():
 @pytest.fixture
 def producer(loop, amqp_url, amqp_queue_name):
     producer = Producer(amqp_url, loop=loop)
-
-    loop.run_until_complete(producer.queue_delete(amqp_queue_name))
 
     yield producer
 
