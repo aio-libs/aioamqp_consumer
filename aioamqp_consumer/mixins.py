@@ -50,7 +50,8 @@ class AMQPMixin:
 
         self._connected = True
 
-        logger.debug('Connected amqp')
+        msg = 'Connected amqp'
+        logger.debug(msg)
 
     async def _disconnect(self):
         if self._transport is not None and self._protocol is not None:
@@ -58,7 +59,8 @@ class AMQPMixin:
                 try:
                     await self._channel.close()
 
-                    logger.debug('Amqp channel is closed')
+                    msg = 'Amqp channel is closed'
+                    logger.debug(msg)
                 except aioamqp.AioamqpException:
                     pass
 
@@ -67,7 +69,8 @@ class AMQPMixin:
 
                 self._transport.close()
 
-                logger.debug('Amqp protocol and transport are closed')
+                msg = 'Amqp protocol and transport are closed'
+                logger.debug(msg)
             except (aioamqp.AioamqpException, AttributeError):
                 # AttributeError tmp hotfix
                 pass
