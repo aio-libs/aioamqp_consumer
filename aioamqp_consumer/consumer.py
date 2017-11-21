@@ -4,10 +4,10 @@ import logging
 import aioamqp
 import async_timeout
 
-from .compat import create_future, unpartial
 from .exceptions import Ack, DeadLetter, Reject
 from .log import logger
 from .mixins import AMQPMixin
+from .utils import unpartial
 
 
 class Consumer(AMQPMixin):
@@ -62,7 +62,7 @@ class Consumer(AMQPMixin):
         self._workers = set()
         self._scale_lock = asyncio.Lock(loop=self.loop)
         self._stop_lock = asyncio.Lock(loop=self.loop)
-        self._consume_callback_fut = create_future(loop=self.loop)
+        self._consume_callback_fut = self.loop.create_future()
         self._consume_callback_fut.set_result(None)
         self._down = asyncio.Event(loop=self.loop)
         self._down.set()
@@ -134,13 +134,14 @@ class Consumer(AMQPMixin):
             ),
         )
 
-    def _log_task(self, status, lvl=logging.DEBUG):
+    def _log_task(self, status, lvl=logging.DEBUG, exc_info=False):
         logger.log(
             lvl,
             'Task (queue: {queue}): {status}'.format(
                 queue=self.queue_name,
                 status=status,
             ),
+            exc_info=exc_info,
         )
 
     async def _run_task(self, payload, properties, delivery_tag):
@@ -158,11 +159,11 @@ class Consumer(AMQPMixin):
 
                 raise Ack
 
-            task_timeout = False
-
             try:
-                async with async_timeout.timeout(self.task_timeout,
-                                                 loop=self.loop):
+                async with async_timeout.timeout(
+                    self.task_timeout,
+                    loop=self.loop,
+                ) as cm:
                     try:
                         await _task
                     except self.reject_exceptions as exc:
@@ -170,10 +171,9 @@ class Consumer(AMQPMixin):
                     except self.dead_letter_exceptions as exc:
                         raise DeadLetter from exc
                     except asyncio.TimeoutError:
-                        task_timeout = True
                         raise
             except asyncio.TimeoutError as exc:
-                if task_timeout:
+                if cm.expired:
                     raise
 
                 self._log_task('timeouted', logging.WARNING)
@@ -189,41 +189,59 @@ class Consumer(AMQPMixin):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._log_task('errored', lvl=logging.WARNING)
-            logger.warning(exc, exc_info=exc)
+            self._log_task('errored', lvl=logging.ERROR, exc_info=exc)
             return self._basic_client_ack(delivery_tag)
 
-        self._log_task(status='successfully finished')
+        self._log_task('successfully finished')
         return self._basic_client_ack(delivery_tag)
 
     async def _worker(self):
         while True:
-            delivery_tag, finalizer = None, None
             try:
+                finalizer = delivery_tag = None
                 payload, envelope, properties = await self._queue.get()
                 delivery_tag = envelope.delivery_tag
 
                 try:
-                    finalizer = await self._run_task(
+                    coro = await self._run_task(
                         payload,
                         properties,
                         delivery_tag,
                     )
 
-                    await finalizer
+                    finalizer = self.loop.create_task(coro)
+
+                    await asyncio.shield(finalizer, loop=self.loop)
                 finally:
                     self._queue.task_done()
             except asyncio.CancelledError:
-                if (
-                    delivery_tag is not None and
-                    finalizer is None and
-                    not self._down.is_set()
-                ):
-                    await self._basic_reject(delivery_tag, requeue=True)
-
                 logger.debug('Worker (queue: {queue}) is cancelled'.format(
                     queue=self.queue_name,
                 ))
+
+                if finalizer is not None:
+                    if not finalizer.done():
+                        logger.debug(
+                            'Worker (queue: {queue}) doing '
+                            'finalization due cancellation'.format(
+                                queue=self.queue_name,
+                            ),
+                        )
+                        await finalizer
+
+                    break
+
+                if self._down.is_set():
+                    break
+
+                if delivery_tag is not None:
+                    logger.debug(
+                        'Worker (queue: {queue}) doing '
+                        'basic reject due cancellation'.format(
+                            queue=self.queue_name,
+                        ),
+                    )
+                    await self._basic_reject(delivery_tag, requeue=True)
 
                 break
 

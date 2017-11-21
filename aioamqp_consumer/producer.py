@@ -62,44 +62,8 @@ class Producer(AMQPMixin):
 
             self._known_exchanges.add(exchange_name)
 
-    async def _connect(self):
-        async with self._connect_lock:
-            if not self._connected:
-                await super()._connect(self.amqp_url, **self.amqp_kwargs)
-
-    async def queue_declare(self, queue_name, *, queue_kwargs=None):
-        if queue_kwargs is None:
-            queue_kwargs = {}
-
-        try:
-            await self._connect()
-
-            result = await self._queue_declare(
-                queue_name=queue_name,
-                **queue_kwargs
-            )
-            return result
-        except:  # noqa
-            await self._disconnect()
-            raise
-
-    async def exchange_declare(self, exchange_name, *, exchange_kwargs=None):
-        if exchange_kwargs is None:
-            exchange_kwargs = {}
-
-        try:
-            await self._connect()
-
-            result = await self._exchange_declare(
-                exchange_name=exchange_name,
-                **exchange_kwargs
-            )
-            return result
-        except:  # noqa
-            await self._disconnect()
-            raise
-
-    async def _ensure_queue_bind(self, queue_name, exchange_name, routing_key=''):
+    async def _ensure_queue_bind(self, queue_name, exchange_name,
+                                 routing_key=''):
         async with self._bind_queue_lock:
             if queue_name in self._binded_queues:
                 return
@@ -117,6 +81,41 @@ class Producer(AMQPMixin):
 
             self._binded_queues.add(queue_name)
 
+    async def _connect(self):
+        async with self._connect_lock:
+            if not self._connected:
+                await super()._connect(self.amqp_url, **self.amqp_kwargs)
+
+    async def queue_declare(self, queue_name, *, queue_kwargs=None):
+        if queue_kwargs is None:
+            queue_kwargs = {}
+
+        try:
+            await self._connect()
+
+            return await self._queue_declare(
+                queue_name=queue_name,
+                **queue_kwargs
+            )
+        except:  # noqa
+            await self._disconnect()
+            raise
+
+    async def exchange_declare(self, exchange_name, *, exchange_kwargs=None):
+        if exchange_kwargs is None:
+            exchange_kwargs = {}
+
+        try:
+            await self._connect()
+
+            return await self._exchange_declare(
+                exchange_name=exchange_name,
+                **exchange_kwargs
+            )
+        except:  # noqa
+            await self._disconnect()
+            raise
+
     async def publish(
         self,
         payload,
@@ -126,7 +125,8 @@ class Producer(AMQPMixin):
         routing_key='',
 
         properties=None,
-        mandatory=False,  # set False because of bug https://github.com/Polyconseil/aioamqp/issues/140
+        # set False because of bug https://github.com/Polyconseil/aioamqp/issues/140  # noqa
+        mandatory=False,
         immediate=False,
         *,
         queue_kwargs=None,
@@ -158,9 +158,10 @@ class Producer(AMQPMixin):
                 exchange_kwargs=exchange_kwargs,
             )
 
-            await self._ensure_queue_bind(queue_name, exchange_name, routing_key)
+            await self._ensure_queue_bind(
+                queue_name, exchange_name, routing_key)
 
-            result = await self._basic_publish(
+            return await self._basic_publish(
                 payload,
                 exchange_name=exchange_name,
                 routing_key=routing_key,
@@ -168,7 +169,6 @@ class Producer(AMQPMixin):
                 mandatory=mandatory,
                 immediate=immediate,
             )
-            return result
         except:  # noqa
             await self._disconnect()
             raise
@@ -180,47 +180,6 @@ class Producer(AMQPMixin):
             await self._connect()
 
             await self._queue_purge(queue_name, **kwargs)
-        except:  # noqa
-            await self._disconnect()
-            raise
-
-    async def queue_unbind(self, queue_name, exchange_name, routing_key, **kwargs):
-        try:
-            assert not self._closed, 'Cannot unbind while closed'
-
-            await self._connect()
-
-            await self._queue_unbind(queue_name, exchange_name, routing_key, **kwargs)
-
-            self._binded_queues.discard(queue_name)
-        except:  # noqa
-            await self._disconnect()
-            raise
-
-    async def queue_delete(self, queue_name, **kwargs):
-        try:
-            assert not self._closed, 'Cannot delete while closed'
-
-            await self._connect()
-
-            await self._queue_delete(queue_name, **kwargs)
-
-            self._known_queues.discard(queue_name)
-            # Remove also from binded
-            self._binded_queues.discard(queue_name)
-        except:  # noqa
-            await self._disconnect()
-            raise
-
-    async def exchange_delete(self, exchange_name, **kwargs):
-        try:
-            assert not self._closed, 'Cannot delete while closed'
-
-            await self._connect()
-
-            await self._exchange_delete(exchange_name, **kwargs)
-
-            self._known_exchanges.discard(exchange_name)
         except:  # noqa
             await self._disconnect()
             raise
