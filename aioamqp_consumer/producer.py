@@ -120,7 +120,7 @@ class Producer(AMQPMixin):
         payload,
 
         queue_name,
-        exchange_name='default',
+        exchange_name='',
         routing_key='',
 
         properties=None,
@@ -152,13 +152,18 @@ class Producer(AMQPMixin):
                 queue_kwargs=queue_kwargs,
             )
 
-            await self._ensure_exchange(
-                exchange_name,
-                exchange_kwargs=exchange_kwargs,
-            )
+            if exchange_name != '':
+                await self._ensure_exchange(
+                    exchange_name,
+                    exchange_kwargs=exchange_kwargs,
+                )
 
-            await self._ensure_queue_bind(
-                queue_name, exchange_name, routing_key)
+                if routing_key != '':
+                    await self._ensure_queue_bind(
+                        queue_name,
+                        exchange_name,
+                        routing_key
+                    )
 
             return await self._basic_publish(
                 payload,
