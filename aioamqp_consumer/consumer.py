@@ -331,7 +331,7 @@ class Consumer(AMQPMixin):
                     msg = 'Connection error during join in consumer ' \
                           '(queue: %(queue)s).'
                     context = {'queue': self.queue_name}
-                    logger.warning(msg, context, exc_ifo=exc)
+                    logger.warning(msg, context, exc_info=exc)
                     continue
                 else:
                     if queue['message_count'] == 0 and self._queue.empty():
