@@ -3,8 +3,8 @@ aioamqp_consumer
 
 :info: Consumer/producer like library built over amqp (aioamqp)
 
-.. image:: https://img.shields.io/travis/wikibusiness/aioamqp_consumer.svg
-    :target: https://travis-ci.org/wikibusiness/aioamqp_consumer
+.. image:: https://img.shields.io/travis/aio-libs/aioamqp_consumer.svg
+    :target: https://travis-ci.org/aio-libs/aioamqp_consumer
 
 .. image:: https://img.shields.io/pypi/v/aioamqp_consumer.svg
     :target: https://pypi.python.org/pypi/aioamqp_consumer
