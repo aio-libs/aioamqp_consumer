@@ -22,17 +22,16 @@ Consume/Producer usage
 .. code-block:: python
 
     import asyncio
-    from functools import partial
 
     from aioamqp_consumer import Consumer, Producer
 
 
-    async def task(payload, options, sleep=0, *, loop):
-        await asyncio.sleep(sleep, loop=loop)
+    async def task(payload, properties):
+        await asyncio.sleep(1)
         print(payload)
 
 
-    async def main(*, loop):
+    async def main():
         amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
         amqp_queue = 'your-queue-here'
         queue_kwargs = {
@@ -40,7 +39,7 @@ Consume/Producer usage
         }
         amqp_kwargs = {}  # https://aioamqp.readthedocs.io/en/latest/api.html#aioamqp.connect
 
-        async with Producer(amqp_url, amqp_kwargs=amqp_kwargs, loop=loop) as producer:
+        async with Producer(amqp_url, amqp_kwargs=amqp_kwargs) as producer:
             for _ in range(5):
                 await producer.publish(
                     b'hello',
@@ -50,11 +49,10 @@ Consume/Producer usage
 
         consumer = Consumer(
             amqp_url,
-            partial(task, loop=loop, sleep=1),
+            task,
             amqp_queue,
             queue_kwargs=queue_kwargs,
             amqp_kwargs=amqp_kwargs,
-            loop=loop,
         )
         await consumer.scale(20)  # scale up to 20 background coroutines
         await consumer.scale(5)  # downscale to 5 background coroutines
@@ -64,13 +62,13 @@ Consume/Producer usage
 
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main(loop=loop))
+    loop.run_until_complete(main())
     loop.close()
 
 RPC usage
 ---------
 
-.. code-block:: python
+    .. code-block:: python
 
     import asyncio
 
@@ -81,6 +79,7 @@ RPC usage
 
     @RpcMethod.init(queue_name='random_queue')
     async def method(payload):
+        print(payload)
         return payload
 
 
