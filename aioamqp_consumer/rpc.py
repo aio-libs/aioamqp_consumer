@@ -29,9 +29,16 @@ class RpcClient(Consumer):
 
         self._map = defaultdict(self.loop.create_future)
 
-        self._ensure_queue_lock = asyncio.Lock()
+        self._init_ensure_locks()
+        self._init_known()
 
-        self._known_queues = set()
+    _init_known = Producer._init_known
+    _init_ensure_locks = Producer._init_ensure_locks
+
+    _ensure = Producer._ensure
+    _ensure_queue = Producer._ensure_queue
+    _ensure_exchange = Producer._ensure_exchange
+    _ensure_queue_bind = Producer._ensure_queue_bind
 
     def join(self):
         raise NotImplementedError
@@ -44,7 +51,7 @@ class RpcClient(Consumer):
     def _on_error_callback(self, exc):
         self._purge_map()
 
-        self._known_queues = set()
+        self._init_known()
 
         super()._on_error_callback(exc)
 
@@ -73,12 +80,26 @@ class RpcClient(Consumer):
 
         await super()._connect()
 
-    _ensure_queue = Producer._ensure_queue
-
-    async def queue_declare(self, queue_name, *, queue_kwargs):
+    async def queue_declare(self, queue_name, queue_kwargs):
         return await self._queue_declare(
             queue_name=queue_name,
             **queue_kwargs,
+        )
+
+    async def exchange_declare(self, exchange_name, exchange_kwargs=None):
+        if exchange_kwargs is None:
+            exchange_kwargs = {}
+
+        return await self._exchange_declare(
+            exchange_name=exchange_name,
+            **exchange_kwargs,
+        )
+
+    async def queue_bind(self, queue_name, exchange_name, routing_key=''):
+        await self._queue_bind(
+            queue_name=queue_name,
+            exchange_name=exchange_name,
+            routing_key=routing_key if routing_key else queue_name,
         )
 
     async def call(self, rpc_call):
@@ -90,10 +111,12 @@ class RpcClient(Consumer):
         fut = self._map[corr_id]
         fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
 
-        # TODO: ensure bindings
-        await self._ensure_queue(
-            rpc_call.queue_name,
+        await self._ensure(
+            queue_name=rpc_call.queue_name,
             queue_kwargs=rpc_call.queue_kwargs,
+            exchange_name=rpc_call.exchange_name,
+            exchange_kwargs=rpc_call.exchange_kwargs,
+            routing_key=rpc_call.queue_name,
         )
 
         properties = {
@@ -123,43 +146,72 @@ class RpcClient(Consumer):
 
 class RpcCall:
 
+    def __init__(
+        self,
+        payload,
+        *,
+        queue_name,
+        queue_kwargs,
+        exchange_name,
+        exchange_kwargs,
+        mandatory,
+        immediate,
+    ):
+        self.payload = payload
+        self.queue_name = queue_name
+        self.queue_kwargs = queue_kwargs
+        self.exchange_name = exchange_name
+        self.exchange_kwargs = exchange_kwargs
+        self.mandatory = mandatory
+        self.immediate = immediate
+
+
+class RpcMethod:
+
     mandatory = False
 
     immediate = False
 
     def __init__(
         self,
-        payload,
+        fn,
         *,
         queue_name,
-        exchange_name,
         queue_kwargs,
+        exchange_name,
+        exchange_kwargs,
     ):
-        self.payload = payload
-        self.queue_name = queue_name
-        self.exchange_name = exchange_name
-        self.queue_kwargs = queue_kwargs
-
-
-class RpcMethod:
-
-    def __init__(self, fn, *, queue_name, exchange_name, queue_kwargs):
         self.fn = fn
         self._queue_name = queue_name
-        self.exchange_name = exchange_name
         self.queue_kwargs = queue_kwargs
+        self.exchange_name = exchange_name
+        self.exchange_kwargs = exchange_kwargs
 
     @classmethod
-    def init(cls, queue_name, *, exchange_name='', queue_kwargs=None):
+    def init(
+        cls,
+        queue_name,
+        *,
+        queue_kwargs=None,
+        exchange_name='',
+        exchange_kwargs=None,
+    ):
         if queue_kwargs is None:
             queue_kwargs = {}
+
+        if exchange_kwargs is None:
+            # Default exchange type is 'DIRECT'
+            exchange_kwargs = {
+                'type_name': 'direct',
+            }
 
         def wrapper(fn):
             method = cls(
                 fn,
                 queue_name=queue_name,
-                exchange_name=exchange_name,
                 queue_kwargs=queue_kwargs,
+                exchange_name=exchange_name,
+                exchange_kwargs=exchange_kwargs,
             )
 
             return method
@@ -174,8 +226,11 @@ class RpcMethod:
         return RpcCall(
             payload,
             queue_name=self.queue_name,
-            exchange_name=self.exchange_name,
             queue_kwargs=self.queue_kwargs,
+            exchange_name=self.exchange_name,
+            exchange_kwargs=self.exchange_kwargs,
+            mandatory=self.mandatory,
+            immediate=self.immediate,
         )
 
     async def call(self, payload, properties, *, consumer):
@@ -197,10 +252,11 @@ class RpcMethod:
 
         await consumer._basic_publish(
             payload=ret,
-            # TODO: exchange_name, routing_key, other params
-            exchange_name='',
+            exchange_name=self.exchange_name,
             routing_key=properties.reply_to,
             properties=_properties,
+            mandatory=self.mandatory,
+            immediate=self.immediate,
         )
 
         return ret
