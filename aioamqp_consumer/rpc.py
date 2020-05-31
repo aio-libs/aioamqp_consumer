@@ -8,22 +8,19 @@ from .exceptions import DeliveryException, RpcError
 from .log import logger
 from .producer import Producer
 
-PREFIX = __package__ + '_rpc_'
-
 
 class RpcClient(Consumer):
 
     exclusive = True
 
-    def __init__(self, amqp_url, *, tasks_per_worker=3, loop=None):
-        kwargs = {
-            'queue_kwargs': {
+    def __init__(self, amqp_url, **kwargs):
+        kwargs.setdefault(
+            'queue_kwargs',
+            {
                 'exclusive': True,
             },
-            'concurrency': 1,
-            'tasks_per_worker': tasks_per_worker,
-            'loop': loop,
-        }
+        )
+        kwargs['concurrency'] = 1
 
         super().__init__(amqp_url, self._on_rpc_callback, '', **kwargs)
 
@@ -266,23 +263,11 @@ class RpcServer(Consumer):
 
     exclusive = False
 
-    def __init__(
-        self,
-        amqp_url,
-        method,
-        *,
-        concurrency=1,
-        tasks_per_worker=1,
-        loop=None,
-    ):
+    def __init__(self, amqp_url, method, **kwargs):
+        kwargs.setdefault('tasks_per_worker', 1)
         args = (amqp_url, method.call, method.queue_name)
 
-        super().__init__(
-            *args,
-            concurrency=concurrency,
-            tasks_per_worker=tasks_per_worker,
-            loop=loop,
-        )
+        super().__init__(*args, **kwargs)
 
     def _wrap(self, payload, properties):
         return self.task(payload, properties, consumer=self)

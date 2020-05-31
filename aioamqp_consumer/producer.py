@@ -95,12 +95,7 @@ class Producer(AMQPMixin):
 
             self._known_exchanges.add(exchange_name)
 
-    async def _ensure_queue_bind(
-        self,
-        queue_name,
-        exchange_name,
-        routing_key,
-    ):
+    async def _ensure_queue_bind(self, queue_name, exchange_name, routing_key):
         async with self._ensure_bind_queue_lock:
             routing_key = routing_key if routing_key else queue_name
 
