@@ -9,8 +9,6 @@ import pytest
 
 from aioamqp_consumer import Producer
 
-asyncio.set_event_loop(None)
-
 
 HOST = 'localhost'
 PORT = 5672
@@ -76,7 +74,7 @@ def amqp_queue_name():
 
 @pytest.fixture
 def producer(amqp_url, loop):
-    producer = Producer(amqp_url, loop=loop)
+    producer = Producer(amqp_url)
 
     yield producer
 

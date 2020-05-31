@@ -30,7 +30,6 @@ class Consumer(AMQPMixin):
         dead_letter_exceptions=tuple(),
         queue_kwargs=None,
         amqp_kwargs=None,
-        loop=None,
     ):
         if concurrency <= 0:
             raise NotImplementedError
@@ -41,10 +40,7 @@ class Consumer(AMQPMixin):
         if amqp_kwargs is None:
             amqp_kwargs = {}
 
-        if loop is None:
-            loop = asyncio.get_event_loop()
-
-        self.loop = loop
+        self.loop = asyncio.get_event_loop()
 
         self.amqp_url = amqp_url
         self.task = task
@@ -60,18 +56,18 @@ class Consumer(AMQPMixin):
         self.queue_kwargs = queue_kwargs
         self.amqp_kwargs = amqp_kwargs
 
-        self._queue = asyncio.Queue(loop=self.loop)
+        self._queue = asyncio.Queue()
         self._workers = set()
-        self._scale_lock = asyncio.Lock(loop=self.loop)
-        self._stop_lock = asyncio.Lock(loop=self.loop)
+        self._scale_lock = asyncio.Lock()
+        self._stop_lock = asyncio.Lock()
         self._consume_callback_fut = self.loop.create_future()
         self._consume_callback_fut.set_result(None)
-        self._down = asyncio.Event(loop=self.loop)
+        self._down = asyncio.Event()
         self._down.set()
-        self._up = asyncio.Event(loop=self.loop)
+        self._up = asyncio.Event()
         self._queue_info = None
 
-        self.__monitor = asyncio.ensure_future(self._monitor(), loop=self.loop)
+        self.__monitor = self.loop.create_task(self._monitor())
 
     async def _get_concurrency(self):
         async with self._scale_lock:
@@ -98,7 +94,7 @@ class Consumer(AMQPMixin):
         return self._consume_callback_fut
 
     def _add_worker(self):
-        worker = asyncio.ensure_future(self._worker(), loop=self.loop)
+        worker = self.loop.create_task(self._worker())
 
         self._workers.add(worker)
 
@@ -163,10 +159,7 @@ class Consumer(AMQPMixin):
                 raise Ack
 
             try:
-                async with async_timeout.timeout(
-                    self.task_timeout,
-                    loop=self.loop,
-                ) as cm:
+                async with async_timeout.timeout(self.task_timeout) as cm:
                     try:
                         await _task
                     except self.reject_exceptions as exc:
@@ -214,7 +207,7 @@ class Consumer(AMQPMixin):
 
                     finalizer = self.loop.create_task(coro)
 
-                    await asyncio.shield(finalizer, loop=self.loop)
+                    await asyncio.shield(finalizer)
                 finally:
                     self._queue.task_done()
             except asyncio.CancelledError:
@@ -253,7 +246,7 @@ class Consumer(AMQPMixin):
 
     async def ok(self, timeout=None):
         try:
-            async with async_timeout.timeout(timeout, loop=self.loop):
+            async with async_timeout.timeout(timeout):
                 await self._up.wait()
         except asyncio.TimeoutError:
             raise aioamqp.AioamqpException
@@ -316,7 +309,7 @@ class Consumer(AMQPMixin):
         queue_kwargs = self.queue_kwargs.copy()
         queue_kwargs.setdefault('passive', True)
 
-        async with async_timeout.timeout(timeout, loop=self.loop):
+        async with async_timeout.timeout(timeout):
             while True:
                 if wait_ok:
                     await self.ok()
@@ -324,7 +317,7 @@ class Consumer(AMQPMixin):
                 await self._queue.join()
 
                 try:
-                    await asyncio.sleep(delay, loop=self.loop)
+                    await asyncio.sleep(delay)
 
                     queue = await self._queue_declare(
                         queue_name=self.queue_name,
@@ -370,7 +363,7 @@ class Consumer(AMQPMixin):
                 context = {'delay': self.reconnect_delay}
                 logger.warning(msg, context, exc_info=exc)
 
-                await asyncio.sleep(self.reconnect_delay, loop=self.loop)
+                await asyncio.sleep(self.reconnect_delay)
 
     async def _consume(self):
         while True:
@@ -415,7 +408,7 @@ class Consumer(AMQPMixin):
                     self.__cancel_workers()
 
                 if self._workers:
-                    await asyncio.gather(*self._workers, loop=self.loop)
+                    await asyncio.gather(*self._workers)
 
                 msg = 'All workers (queue: %(queue)s) are stopped'
                 context = {'queue': self.queue_name}

@@ -36,7 +36,6 @@ class AMQPMixin:
             on_error = self._on_error_callback
 
         kwargs['on_error'] = on_error
-        kwargs['loop'] = self.loop
 
         try:
             self._transport, self._protocol = await aioamqp.from_url(

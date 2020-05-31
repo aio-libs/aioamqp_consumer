@@ -10,29 +10,25 @@ class Producer(AMQPMixin):
         amqp_url,
         *,
         amqp_kwargs=None,
-        loop=None,
     ):
         if amqp_kwargs is None:
             amqp_kwargs = {}
 
-        if loop is None:
-            loop = asyncio.get_event_loop()
-
-        self.loop = loop
+        self.loop = asyncio.get_event_loop()
 
         self.amqp_url = amqp_url
 
         self.amqp_kwargs = amqp_kwargs
 
-        self._connect_lock = asyncio.Lock(loop=self.loop)
+        self._connect_lock = asyncio.Lock()
 
         self._init_ensure_locks()
         self._init_known()
 
     def _init_ensure_locks(self):
-        self._ensure_queue_lock = asyncio.Lock(loop=self.loop)
-        self._ensure_exchange_lock = asyncio.Lock(loop=self.loop)
-        self._ensure_bind_queue_lock = asyncio.Lock(loop=self.loop)
+        self._ensure_queue_lock = asyncio.Lock()
+        self._ensure_exchange_lock = asyncio.Lock()
+        self._ensure_bind_queue_lock = asyncio.Lock()
 
     def _init_known(self):
         self._known_queues = set()
