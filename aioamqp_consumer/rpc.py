@@ -39,6 +39,10 @@ class RpcClient(Consumer):
     _ensure_exchange = Producer._ensure_exchange
     _ensure_queue_bind = Producer._ensure_queue_bind
 
+    queue_declare = Producer.queue_declare
+    exchange_declare = Producer.exchange_declare
+    queue_bind = Producer.queue_bind
+
     def join(self):
         raise NotImplementedError
 
@@ -78,28 +82,6 @@ class RpcClient(Consumer):
         self.queue_name = ''
 
         await super()._connect()
-
-    async def queue_declare(self, queue_name, queue_kwargs):
-        return await self._queue_declare(
-            queue_name=queue_name,
-            **queue_kwargs,
-        )
-
-    async def exchange_declare(self, exchange_name, exchange_kwargs=None):
-        if exchange_kwargs is None:
-            exchange_kwargs = self._get_default_exchange_kwargs()
-
-        return await self._exchange_declare(
-            exchange_name=exchange_name,
-            **exchange_kwargs,
-        )
-
-    async def queue_bind(self, queue_name, exchange_name, routing_key=''):
-        await self._queue_bind(
-            queue_name=queue_name,
-            exchange_name=exchange_name,
-            routing_key=routing_key if routing_key else queue_name,
-        )
 
     async def call(self, rpc_call):
         if not self._connected:
@@ -221,6 +203,8 @@ class RpcMethod:
         return self._queue_name
 
     def __call__(self, payload):
+        assert isinstance(payload, bytes)
+
         return RpcCall(
             payload,
             queue_name=self.queue_name,
@@ -247,6 +231,8 @@ class RpcMethod:
 
             ret = RpcError(exc).dumps()
             _properties['content_type'] = RpcError.content_type
+        else:
+            assert isinstance(ret, bytes)
 
         await consumer._basic_publish(
             payload=ret,

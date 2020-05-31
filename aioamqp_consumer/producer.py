@@ -1,4 +1,7 @@
 import asyncio
+from functools import wraps
+
+from aioamqp import AioamqpException
 
 from .mixins import AMQPMixin
 
@@ -25,6 +28,31 @@ class Producer(AMQPMixin):
         self._init_ensure_locks()
         self._init_known()
 
+        self.publish = self._connection_guard(self.publish)
+        self.queue_declare = self._connection_guard(self.queue_declare)
+        self.exchange_declare = self._connection_guard(self.exchange_declare)
+        self.queue_bind = self._connection_guard(self.queue_bind)
+        self.queue_purge = self._connection_guard(self.queue_purge)
+
+    def _connection_guard(self, fn):
+        @wraps(fn)
+        async def wrapper(*args, **kwargs):
+            try:
+                await self._connect()
+
+                return await fn(*args, **kwargs)
+            except AioamqpException:
+                await self._disconnect()
+                raise
+
+        return wrapper
+
+    @staticmethod
+    def _get_default_exchange_kwargs():
+        return {
+            'type_name': 'direct',
+        }
+
     def _init_ensure_locks(self):
         self._ensure_queue_lock = asyncio.Lock()
         self._ensure_exchange_lock = asyncio.Lock()
@@ -34,17 +62,6 @@ class Producer(AMQPMixin):
         self._known_queues = set()
         self._known_exchanges = set()
         self._binded_queues = set()
-
-    @staticmethod
-    def _get_default_exchange_kwargs():
-        return {
-            'type_name': 'direct',
-        }
-
-    async def _connect(self):
-        async with self._connect_lock:
-            if not self._connected:
-                await super()._connect(self.amqp_url, **self.amqp_kwargs)
 
     async def _ensure(
         self,
@@ -114,44 +131,26 @@ class Producer(AMQPMixin):
         if queue_kwargs is None:
             queue_kwargs = {}
 
-        try:
-            await self._connect()
-
-            return await self._queue_declare(
-                queue_name=queue_name,
-                **queue_kwargs,
-            )
-        except:  # noqa
-            await self._disconnect()
-            raise
+        return await self._queue_declare(
+            queue_name=queue_name,
+            **queue_kwargs,
+        )
 
     async def exchange_declare(self, exchange_name, exchange_kwargs=None):
         if exchange_kwargs is None:
             exchange_kwargs = self._get_default_exchange_kwargs()
 
-        try:
-            await self._connect()
-
-            return await self._exchange_declare(
-                exchange_name=exchange_name,
-                **exchange_kwargs,
-            )
-        except:  # noqa
-            await self._disconnect()
-            raise
+        return await self._exchange_declare(
+            exchange_name=exchange_name,
+            **exchange_kwargs,
+        )
 
     async def queue_bind(self, queue_name, exchange_name, routing_key=''):
-        try:
-            await self._connect()
-
-            await self._queue_bind(
-                queue_name=queue_name,
-                exchange_name=exchange_name,
-                routing_key=routing_key if routing_key else queue_name,
-            )
-        except:  # noqa
-            await self._disconnect()
-            raise
+        return await self._queue_bind(
+            queue_name=queue_name,
+            exchange_name=exchange_name,
+            routing_key=routing_key if routing_key else queue_name,
+        )
 
     async def publish(
         self,
@@ -175,39 +174,30 @@ class Producer(AMQPMixin):
 
         assert isinstance(payload, bytes)
 
-        try:
-            assert not self._closed, 'Cannot publish while closed'
+        await self._ensure(
+            queue_name=queue_name,
+            queue_kwargs=queue_kwargs,
+            exchange_name=exchange_name,
+            exchange_kwargs=exchange_kwargs,
+            routing_key=routing_key,
+        )
 
-            await self._connect()
-
-            await self._ensure(
-                queue_name=queue_name,
-                queue_kwargs=queue_kwargs,
-                exchange_name=exchange_name,
-                exchange_kwargs=exchange_kwargs,
-                routing_key=routing_key,
-            )
-
-            return await self._basic_publish(
-                payload,
-                exchange_name=exchange_name,
-                routing_key=routing_key if routing_key else queue_name,
-                properties=properties,
-                mandatory=mandatory,
-                immediate=immediate,
-            )
-        except:  # noqa
-            await self._disconnect()
-            raise
+        return await self._basic_publish(
+            payload,
+            exchange_name=exchange_name,
+            routing_key=routing_key if routing_key else queue_name,
+            properties=properties,
+            mandatory=mandatory,
+            immediate=immediate,
+        )
 
     async def queue_purge(self, queue_name, **kwargs):
-        try:
-            await self._connect()
+        return await self._queue_purge(queue_name, **kwargs)
 
-            await self._queue_purge(queue_name, **kwargs)
-        except:  # noqa
-            await self._disconnect()
-            raise
+    async def _connect(self):
+        async with self._connect_lock:
+            if not self._connected:
+                await super()._connect(self.amqp_url, **self.amqp_kwargs)
 
     async def _disconnect(self):
         self._init_known()
@@ -217,14 +207,14 @@ class Producer(AMQPMixin):
     def close(self):
         self._closed = True
 
-    async def wait_closed(self):
+    def wait_closed(self):
         assert self._closed, 'Must be closed first'
 
-        await self._disconnect()
+        return self._disconnect()
 
-    async def __aenter__(self):  # noqa
+    async def __aenter__(self):
         return self
 
-    async def __aexit__(self, *exc_info):  # noqa
+    async def __aexit__(self, *exc_info):
         self.close()
         await self.wait_closed()

@@ -86,6 +86,14 @@ class Consumer(AMQPMixin):
     def closed(self):
         return self._closed
 
+    def _on_error_callback(self, exc):
+        super()._on_error_callback(exc)
+        if not self._down.is_set():
+            self._down.set()
+
+        if self._up.is_set():
+            self._up.clear()
+
     def _consume_callback(self, channel, payload, envelope, properties):
         task = payload, envelope, properties
 
@@ -235,14 +243,6 @@ class Consumer(AMQPMixin):
                     await self._basic_reject(delivery_tag, requeue=True)
 
                 break
-
-    def _on_error_callback(self, exc):
-        super()._on_error_callback(exc)
-        if not self._down.is_set():
-            self._down.set()
-
-        if self._up.is_set():
-            self._up.clear()
 
     async def ok(self, timeout=None):
         try:
@@ -491,9 +491,9 @@ class Consumer(AMQPMixin):
         context = {'queue': self.queue_name}
         logger.debug(msg, context)
 
-    async def __aenter__(self):  # noqa
+    async def __aenter__(self):
         return self
 
-    async def __aexit__(self, *exc_info):  # noqa
+    async def __aexit__(self, *exc_info):
         self.close()
         await self.wait_closed()
