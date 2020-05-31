@@ -61,7 +61,7 @@ class RpcClient(Consumer):
         for fut in self._map.values():
             if not fut.done():
                 fut.set_exception(err)
-                # fut._log_traceback = False
+                fut._log_traceback = False
 
     def _on_error_callback(self, exc):
         self._purge_map()
