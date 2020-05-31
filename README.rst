@@ -1,7 +1,7 @@
 aioamqp_consumer
 ================
 
-:info: Consumer/producer like library built over amqp (aioamqp)
+:info: consumer/producer/rpc library built over aioamqp
 
 .. image:: https://img.shields.io/travis/aio-libs/aioamqp_consumer.svg
     :target: https://travis-ci.org/aio-libs/aioamqp_consumer
