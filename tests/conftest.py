@@ -9,7 +9,6 @@ import pytest
 
 from aioamqp_consumer import Producer
 
-
 HOST = 'localhost'
 PORT = 5672
 
