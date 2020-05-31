@@ -67,7 +67,6 @@ Consume/Producer usage
     loop.run_until_complete(main(loop=loop))
     loop.close()
 
-
 RPC usage
 ---------
 
@@ -107,3 +106,9 @@ RPC usage
     loop.run_until_complete(main())
     loop.close()
 
+Thanks
+------
+
+The library was donated by `Ocean S.A. <https://ocean.io/>`_
+
+Thanks to the company for contribution.
