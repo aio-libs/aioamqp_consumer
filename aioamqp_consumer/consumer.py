@@ -30,7 +30,7 @@ class Consumer(AMQPMixin):
         dead_letter_exceptions=tuple(),
         queue_kwargs=None,
         amqp_kwargs=None,
-        loop=None
+        loop=None,
     ):
         if concurrency <= 0:
             raise NotImplementedError
@@ -108,7 +108,7 @@ class Consumer(AMQPMixin):
               'Workers number is %(workers)s'
         context = {
             'queue': self.queue_name,
-            'workers': len(self._workers)
+            'workers': len(self._workers),
         }
         logger.debug(msg, context)
 
@@ -286,7 +286,7 @@ class Consumer(AMQPMixin):
                     await self._basic_qos(
                         prefetch_size=0,
                         prefetch_count=prefetch,
-                        connection_global=True
+                        connection_global=True,
                     )
                 except aioamqp.AioamqpException as exc:
                     msg = 'Connection problem during consumer scale ' \
@@ -328,7 +328,7 @@ class Consumer(AMQPMixin):
 
                     queue = await self._queue_declare(
                         queue_name=self.queue_name,
-                        **queue_kwargs
+                        **queue_kwargs,
                     )
                 except aioamqp.AioamqpException as exc:
                     msg = 'Connection error during join in consumer ' \
@@ -353,7 +353,7 @@ class Consumer(AMQPMixin):
 
                 self._queue_info = await self._queue_declare(
                     queue_name=self.queue_name,
-                    **self.queue_kwargs
+                    **self.queue_kwargs,
                 )
 
                 self._after_connect()

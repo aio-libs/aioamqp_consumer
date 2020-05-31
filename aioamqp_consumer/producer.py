@@ -10,7 +10,7 @@ class Producer(AMQPMixin):
         amqp_url,
         *,
         amqp_kwargs=None,
-        loop=None
+        loop=None,
     ):
         if amqp_kwargs is None:
             amqp_kwargs = {}
@@ -72,7 +72,7 @@ class Producer(AMQPMixin):
                 await self._queue_bind(
                     queue_name=queue_name,
                     exchange_name=exchange_name,
-                    routing_key=routing_key if routing_key else queue_name
+                    routing_key=routing_key if routing_key else queue_name,
                 )
             except:  # noqa
                 await self._disconnect()
@@ -94,7 +94,7 @@ class Producer(AMQPMixin):
 
             return await self._queue_declare(
                 queue_name=queue_name,
-                **queue_kwargs
+                **queue_kwargs,
             )
         except:  # noqa
             await self._disconnect()
@@ -109,7 +109,7 @@ class Producer(AMQPMixin):
 
             return await self._exchange_declare(
                 exchange_name=exchange_name,
-                **exchange_kwargs
+                **exchange_kwargs,
             )
         except:  # noqa
             await self._disconnect()
@@ -129,7 +129,7 @@ class Producer(AMQPMixin):
         immediate=False,
         *,
         queue_kwargs=None,
-        exchange_kwargs=None
+        exchange_kwargs=None,
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
@@ -137,7 +137,7 @@ class Producer(AMQPMixin):
         if exchange_kwargs is None:
             # Default exchange type is 'DIRECT'
             exchange_kwargs = {
-                'type_name': 'direct'
+                'type_name': 'direct',
             }
 
         assert isinstance(payload, bytes)
@@ -162,7 +162,7 @@ class Producer(AMQPMixin):
                     await self._ensure_queue_bind(
                         queue_name,
                         exchange_name,
-                        routing_key
+                        routing_key,
                     )
 
             return await self._basic_publish(

@@ -19,7 +19,7 @@ async def test_consumer_smoke(producer, amqp_queue_name, amqp_url, loop):
         amqp_url,
         task,
         amqp_queue_name,
-        loop=loop
+        loop=loop,
     ) as consumer:
         await consumer.join()
 

@@ -65,7 +65,7 @@ def amqp_url():
         'guest',
         'guest',
         HOST,
-        PORT
+        PORT,
     )
 
 

@@ -41,7 +41,7 @@ class AMQPMixin:
         try:
             self._transport, self._protocol = await aioamqp.from_url(
                 url,
-                **kwargs
+                **kwargs,
             )
         except OSError as exc:
             raise aioamqp.AioamqpException from exc
