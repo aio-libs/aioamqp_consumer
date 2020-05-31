@@ -22,7 +22,7 @@ class RpcClient(Consumer):
             },
             'concurrency': 1,
             'tasks_per_worker': tasks_per_worker,
-            'loop': loop
+            'loop': loop,
         }
 
         super().__init__(amqp_url, self._on_rpc_callback, '', **kwargs)
@@ -90,21 +90,24 @@ class RpcClient(Consumer):
         fut = self._map[corr_id]
         fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
 
-        # TODO: exchange_name, routing_key, other params
+        # TODO: ensure bindings
         await self._ensure_queue(
             rpc_call.queue_name,
-            queue_kwargs={},
+            queue_kwargs=rpc_call.queue_kwargs,
         )
 
+        properties = {
+            'reply_to': self.queue_name,
+            'correlation_id': corr_id,
+        }
+
         await self._basic_publish(
-            payload=rpc_call.payload,
-            # TODO: exchange_name, routing_key, other params
-            exchange_name='',
+            rpc_call.payload,
+            exchange_name=rpc_call.exchange_name,
             routing_key=rpc_call.queue_name,
-            properties={
-                'reply_to': self.queue_name,
-                'correlation_id': corr_id,
-            },
+            properties=properties,
+            mandatory=rpc_call.mandatory,
+            immediate=rpc_call.immediate,
         )
 
         return asyncio.shield(fut)
@@ -120,21 +123,44 @@ class RpcClient(Consumer):
 
 class RpcCall:
 
-    def __init__(self, queue_name, payload):
-        self.queue_name = queue_name
+    mandatory = False
+
+    immediate = False
+
+    def __init__(
+        self,
+        payload,
+        *,
+        queue_name,
+        exchange_name,
+        queue_kwargs,
+    ):
         self.payload = payload
+        self.queue_name = queue_name
+        self.exchange_name = exchange_name
+        self.queue_kwargs = queue_kwargs
 
 
 class RpcMethod:
 
-    def __init__(self, fn, *, queue_name):
+    def __init__(self, fn, *, queue_name, exchange_name, queue_kwargs):
         self.fn = fn
         self._queue_name = queue_name
+        self.exchange_name = exchange_name
+        self.queue_kwargs = queue_kwargs
 
     @classmethod
-    def init(cls, queue_name):
+    def init(cls, queue_name, *, exchange_name='', queue_kwargs=None):
+        if queue_kwargs is None:
+            queue_kwargs = {}
+
         def wrapper(fn):
-            method = cls(fn, queue_name=queue_name)
+            method = cls(
+                fn,
+                queue_name=queue_name,
+                exchange_name=exchange_name,
+                queue_kwargs=queue_kwargs,
+            )
 
             return method
 
@@ -145,7 +171,12 @@ class RpcMethod:
         return self._queue_name
 
     def __call__(self, payload):
-        return RpcCall(self.queue_name, payload)
+        return RpcCall(
+            payload,
+            queue_name=self.queue_name,
+            exchange_name=self.exchange_name,
+            queue_kwargs=self.queue_kwargs,
+        )
 
     async def call(self, payload, properties, *, consumer):
         _properties = {
@@ -186,7 +217,7 @@ class RpcServer(Consumer):
         *,
         concurrency=1,
         tasks_per_worker=1,
-        loop=None
+        loop=None,
     ):
         args = (amqp_url, method.call, method.queue_name)
 
@@ -194,7 +225,7 @@ class RpcServer(Consumer):
             *args,
             concurrency=concurrency,
             tasks_per_worker=tasks_per_worker,
-            loop=loop
+            loop=loop,
         )
 
     def _wrap(self, payload, properties):
