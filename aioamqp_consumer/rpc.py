@@ -14,12 +14,7 @@ class RpcClient(Consumer):
     exclusive = True
 
     def __init__(self, amqp_url, **kwargs):
-        kwargs.setdefault(
-            'queue_kwargs',
-            {
-                'exclusive': True,
-            },
-        )
+        kwargs.setdefault('queue_kwargs', {'exclusive': True})
         kwargs['concurrency'] = 1
 
         super().__init__(amqp_url, self._on_rpc_callback, '', **kwargs)
@@ -216,9 +211,7 @@ class RpcMethod:
         )
 
     async def call(self, payload, properties, *, amqp_mixin):
-        _properties = {
-            'correlation_id': properties.correlation_id,
-        }
+        _properties = {'correlation_id': properties.correlation_id}
 
         try:
             ret = await self.fn(payload)
@@ -247,8 +240,6 @@ class RpcMethod:
 
 
 class RpcServer(Consumer):
-
-    exclusive = False
 
     def __init__(self, amqp_url, method, **kwargs):
         kwargs.setdefault('tasks_per_worker', 1)

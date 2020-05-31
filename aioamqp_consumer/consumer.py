@@ -246,8 +246,8 @@ class Consumer(AMQPMixin):
         try:
             async with async_timeout.timeout(timeout):
                 await self._up.wait()
-        except asyncio.TimeoutError:
-            raise aioamqp.AioamqpException
+        except asyncio.TimeoutError as exc:
+            raise aioamqp.AioamqpException from exc
 
     async def scale(self, concurrency, wait_ok=True, timeout=None):
         if concurrency <= 0:
@@ -413,9 +413,18 @@ class Consumer(AMQPMixin):
                 logger.debug(msg, context)
 
                 if flush_queue:
+                    n = 0
                     while self._queue.qsize():
                         self._queue.get_nowait()
                         self._queue.task_done()
+                        n += 1
+
+                    msg = 'Flushed from internal (queue: %(queue)s) %(n)i messages'  # noqa
+                    context = {
+                        'queue': self.queue_name,
+                        'n': n,
+                    }
+                    logger.debug(msg, context)
 
             await self._disconnect()
 

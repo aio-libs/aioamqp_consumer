@@ -41,6 +41,8 @@ class Producer(AMQPMixin):
                 await self._connect()
 
                 return await fn(*args, **kwargs)
+            # TODO: check OSError/dns/etc to disconnect
+            # change from 0.1.x versions
             except AioamqpException:
                 await self._disconnect()
                 raise
@@ -49,9 +51,7 @@ class Producer(AMQPMixin):
 
     @staticmethod
     def _get_default_exchange_kwargs():
-        return {
-            'type_name': 'direct',
-        }
+        return {'type_name': 'direct'}
 
     def _init_ensure_locks(self):
         self._ensure_queue_lock = asyncio.Lock()
