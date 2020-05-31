@@ -175,7 +175,7 @@ class Consumer(AMQPMixin):
                         raise DeadLetter from exc
                     except asyncio.TimeoutError:
                         raise
-            except asyncio.TimeoutError as exc:
+            except asyncio.TimeoutError:
                 if cm.expired:
                     raise
 
