@@ -215,7 +215,7 @@ class RpcMethod:
             immediate=self.immediate,
         )
 
-    async def call(self, payload, properties, *, consumer):
+    async def call(self, payload, properties, *, amqp_mixin):
         _properties = {
             'correlation_id': properties.correlation_id,
         }
@@ -234,7 +234,7 @@ class RpcMethod:
         else:
             assert isinstance(ret, bytes)
 
-        await consumer._basic_publish(
+        await amqp_mixin._basic_publish(
             payload=ret,
             exchange_name=self.exchange_name,
             routing_key=properties.reply_to,
@@ -257,7 +257,11 @@ class RpcServer(Consumer):
         super().__init__(*args, **kwargs)
 
     def _wrap(self, payload, properties):
-        return self.task(payload, properties, consumer=self)
+        return self.task(
+            payload,
+            properties,
+            amqp_mixin=self,
+        )
 
     def stop(self):
         self.close()

@@ -174,29 +174,27 @@ class Consumer(AMQPMixin):
                         raise Reject from exc
                     except self.dead_letter_exceptions as exc:
                         raise DeadLetter from exc
-                    except asyncio.TimeoutError:
-                        raise
-            except asyncio.TimeoutError:
-                if cm.expired:
+            except asyncio.TimeoutError as exc:
+                if not cm.expired:
                     raise
 
-                self._log_task('timeouted', logging.WARNING)
-                return self._basic_reject(delivery_tag, requeue=True)
+                self._log_task('timeouted')
+                raise Reject from exc
         except Ack:
             pass
-        except DeadLetter:
-            self._log_task('dead lettered')
+        except DeadLetter as exc:
+            self._log_task('dead lettered', logging.WARNING, exc_info=exc)
             return self._basic_reject(delivery_tag, requeue=False)
-        except Reject:
-            self._log_task('rejected')
+        except Reject as exc:
+            self._log_task('rejected', logging.DEBUG, exc_info=exc)
             return self._basic_reject(delivery_tag, requeue=True)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             self._log_task('errored', lvl=logging.ERROR, exc_info=exc)
-            return self._basic_client_ack(delivery_tag)
+        else:
+            self._log_task('successfully finished')
 
-        self._log_task('successfully finished')
         return self._basic_client_ack(delivery_tag)
 
     async def _worker(self):
