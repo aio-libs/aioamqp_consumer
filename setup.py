@@ -31,7 +31,7 @@ setup(
     python_requires='>=3.5.3',
     install_requires=[
         'aioamqp>=0.14.0',
-        'async_timeout>=2.0.0',
+        'async_timeout>=3.0.0',
     ],
     packages=['aioamqp_consumer'],
     include_package_data=True,
