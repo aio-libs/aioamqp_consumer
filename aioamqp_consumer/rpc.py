@@ -1,12 +1,26 @@
 import asyncio
 import uuid
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from functools import partial
 
 from .consumer import Consumer
 from .exceptions import DeliveryError, RpcError
 from .log import logger
 from .producer import Producer
+
+
+RpcCall = namedtuple(
+    'RpcCall',
+    (
+        'payload',
+        'queue_name',
+        'queue_kwargs',
+        'exchange_name',
+        'exchange_kwargs',
+        'mandatory',
+        'immediate',
+    ),
+)
 
 
 class RpcClient(Consumer):
@@ -123,28 +137,6 @@ class RpcClient(Consumer):
         await self.close()
 
 
-class RpcCall:
-
-    def __init__(
-        self,
-        payload,
-        *,
-        queue_name,
-        queue_kwargs,
-        exchange_name,
-        exchange_kwargs,
-        mandatory,
-        immediate,
-    ):
-        self.payload = payload
-        self.queue_name = queue_name
-        self.queue_kwargs = queue_kwargs
-        self.exchange_name = exchange_name
-        self.exchange_kwargs = exchange_kwargs
-        self.mandatory = mandatory
-        self.immediate = immediate
-
-
 class RpcMethod:
 
     mandatory = False
@@ -204,7 +196,7 @@ class RpcMethod:
         assert isinstance(payload, bytes)
 
         return RpcCall(
-            payload,
+            payload=payload,
             queue_name=self.queue_name,
             queue_kwargs=self.queue_kwargs,
             exchange_name=self.exchange_name,
