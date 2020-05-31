@@ -35,6 +35,12 @@ class Producer(AMQPMixin):
         self._known_exchanges = set()
         self._binded_queues = set()
 
+    @staticmethod
+    def _get_default_exchange_kwargs():
+        return {
+            'type_name': 'direct',
+        }
+
     async def _connect(self):
         async with self._connect_lock:
             if not self._connected:
@@ -121,7 +127,7 @@ class Producer(AMQPMixin):
 
     async def exchange_declare(self, exchange_name, exchange_kwargs=None):
         if exchange_kwargs is None:
-            exchange_kwargs = {}
+            exchange_kwargs = self._get_default_exchange_kwargs()
 
         try:
             await self._connect()
@@ -165,10 +171,7 @@ class Producer(AMQPMixin):
             queue_kwargs = {}
 
         if exchange_kwargs is None:
-            # Default exchange type is 'DIRECT'
-            exchange_kwargs = {
-                'type_name': 'direct',
-            }
+            exchange_kwargs = self._get_default_exchange_kwargs()
 
         assert isinstance(payload, bytes)
 

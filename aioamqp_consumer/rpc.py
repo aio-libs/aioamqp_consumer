@@ -32,6 +32,8 @@ class RpcClient(Consumer):
     _init_known = Producer._init_known
     _init_ensure_locks = Producer._init_ensure_locks
 
+    _get_default_exchange_kwargs = Producer._get_default_exchange_kwargs
+
     _ensure = Producer._ensure
     _ensure_queue = Producer._ensure_queue
     _ensure_exchange = Producer._ensure_exchange
@@ -85,7 +87,7 @@ class RpcClient(Consumer):
 
     async def exchange_declare(self, exchange_name, exchange_kwargs=None):
         if exchange_kwargs is None:
-            exchange_kwargs = {}
+            exchange_kwargs = self._get_default_exchange_kwargs()
 
         return await self._exchange_declare(
             exchange_name=exchange_name,
@@ -184,6 +186,8 @@ class RpcMethod:
         self.exchange_name = exchange_name
         self.exchange_kwargs = exchange_kwargs
 
+    _get_default_exchange_kwargs = Producer._get_default_exchange_kwargs
+
     @classmethod
     def init(
         cls,
@@ -197,10 +201,7 @@ class RpcMethod:
             queue_kwargs = {}
 
         if exchange_kwargs is None:
-            # Default exchange type is 'DIRECT'
-            exchange_kwargs = {
-                'type_name': 'direct',
-            }
+            exchange_kwargs = cls._get_default_exchange_kwargs()
 
         def wrapper(fn):
             method = cls(
