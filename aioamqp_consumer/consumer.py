@@ -14,6 +14,8 @@ class Consumer(AMQPMixin):
 
     _consumer_tag = None
 
+    exclusive = False
+
     def __init__(
         self,
         amqp_url,
@@ -67,6 +69,7 @@ class Consumer(AMQPMixin):
         self._down = asyncio.Event(loop=self.loop)
         self._down.set()
         self._up = asyncio.Event(loop=self.loop)
+        self._queue_info = None
 
         self.__monitor = asyncio.ensure_future(self._monitor(), loop=self.loop)
 
@@ -147,7 +150,7 @@ class Consumer(AMQPMixin):
     async def _run_task(self, payload, properties, delivery_tag):
         try:
             try:
-                _task = self.task(payload, properties)
+                _task = self._wrap(payload, properties)
             except self.reject_exceptions as exc:
                 raise Reject from exc
             except self.dead_letter_exceptions as exc:
@@ -283,7 +286,7 @@ class Consumer(AMQPMixin):
                     await self._basic_qos(
                         prefetch_size=0,
                         prefetch_count=prefetch,
-                        connection_global=True,
+                        connection_global=True
                     )
                 except aioamqp.AioamqpException as exc:
                     msg = 'Connection problem during consumer scale ' \
@@ -337,15 +340,23 @@ class Consumer(AMQPMixin):
                     if queue['message_count'] == 0 and self._queue.empty():
                         break
 
+    def _after_connect(self):
+        pass
+
+    def _wrap(self, payload, properties):
+        return self.task(payload, properties)
+
     async def _connect(self):
         while True:
             try:
                 await super()._connect(self.amqp_url, **self.amqp_kwargs)
 
-                await self._queue_declare(
+                self._queue_info = await self._queue_declare(
                     queue_name=self.queue_name,
                     **self.queue_kwargs
                 )
+
+                self._after_connect()
 
                 self._up.set()
 
@@ -375,6 +386,7 @@ class Consumer(AMQPMixin):
                     self._consume_callback,
                     self.queue_name,
                     no_ack=False,
+                    exclusive=self.exclusive,
                 )
             except aioamqp.AioamqpException:
                 continue

@@ -16,8 +16,8 @@ Installation
 
     pip install aioamqp_consumer
 
-Usage
------
+Consume/Producer usage
+----------------------
 
 .. code-block:: python
 
@@ -62,6 +62,48 @@ Usage
         consumer.close()
         await consumer.wait_closed()
 
+
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main(loop=loop))
     loop.close()
+
+
+RPC usage
+---------
+
+.. code-block:: python
+
+    import asyncio
+
+    from aioamqp_consumer import RpcClient, RpcMethod, RpcServer
+
+    payload = b'test'
+
+
+    @RpcMethod
+    async def method(payload):
+        return payload
+
+
+    async def main():
+        amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
+
+        server = RpcServer(amqp_url, method)
+
+        client = RpcClient(amqp_url)
+
+        response = await client.call(method(payload))
+
+        ret = await response
+
+        assert ret == payload
+
+        await client.close()
+
+        await server.stop()
+
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
+

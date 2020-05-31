@@ -1,7 +1,10 @@
+import pytest
+
 from aioamqp_consumer import Consumer
 
 
-async def test_consumer_smoke(producer, loop, amqp_queue_name, amqp_url):
+@pytest.mark.asyncio
+async def test_consumer_smoke(producer, amqp_queue_name, amqp_url, loop):
     test_data = [b'test'] * 5
 
     for data in test_data:
@@ -16,7 +19,7 @@ async def test_consumer_smoke(producer, loop, amqp_queue_name, amqp_url):
         amqp_url,
         task,
         amqp_queue_name,
-        loop=loop,
+        loop=loop
     ) as consumer:
         await consumer.join()
 
