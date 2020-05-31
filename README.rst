@@ -68,7 +68,7 @@ Consume/Producer usage
 RPC usage
 ---------
 
-    .. code-block:: python
+.. code-block:: python
 
     import asyncio
 
