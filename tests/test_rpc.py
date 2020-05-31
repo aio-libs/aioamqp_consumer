@@ -4,7 +4,7 @@ from aioamqp_consumer import RpcClient, RpcMethod, RpcServer
 
 
 @pytest.mark.asyncio
-async def test_rpc(amqp_queue_name, amqp_url, loop):
+async def test_rpc_smoke(amqp_queue_name, amqp_url, loop):
     test_data = b'test'
 
     @RpcMethod.init(amqp_queue_name)
