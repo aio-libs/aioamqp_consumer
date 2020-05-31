@@ -92,9 +92,9 @@ RPC usage
 
         client = RpcClient(amqp_url)
 
-        response = await client.call(method(payload))
-
-        ret = await response
+        fut = await client.call(method(payload))
+        # `method(payload)` will be executed, awaiting result is optional
+        ret = await fut
 
         assert ret == payload
 
