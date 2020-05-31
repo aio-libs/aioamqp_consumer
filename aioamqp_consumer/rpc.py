@@ -130,7 +130,9 @@ class RpcMethod:
     def __init__(self, fn):
         self.fn = fn
 
-        self.queue_name = PREFIX + fn.__name__
+    @property
+    def queue_name(self):
+        return PREFIX + self.fn.__name__
 
     def __call__(self, payload):
         return RpcCall(self.queue_name, payload)
