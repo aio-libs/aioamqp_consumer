@@ -4,7 +4,7 @@ from collections import defaultdict
 from functools import partial
 
 from .consumer import Consumer
-from .exceptions import DeliveryException, RpcError
+from .exceptions import DeliveryError, RpcError
 from .log import logger
 from .producer import Producer
 
@@ -42,9 +42,12 @@ class RpcClient(Consumer):
         raise NotImplementedError
 
     def _purge_map(self):
+        err = RpcError(asyncio.TimeoutError())
+
         for fut in self._map.values():
             if not fut.done():
-                fut.set_exception(asyncio.TimeoutError)
+                fut.set_exception(err)
+                # fut._log_traceback = False
 
     def _on_error_callback(self, exc):
         self._purge_map()
@@ -217,7 +220,7 @@ class RpcMethod:
             ret = await self.fn(payload)
         except asyncio.CancelledError:
             raise
-        except DeliveryException:
+        except DeliveryError:
             raise
         except Exception as exc:
             logger.warning(exc, exc_info=exc)

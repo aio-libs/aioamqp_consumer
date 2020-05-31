@@ -3,19 +3,19 @@ import pickle
 from .log import logger
 
 
-class DeliveryException(Exception):
+class DeliveryError(Exception):
     pass
 
 
-class Ack(DeliveryException):
+class Ack(DeliveryError):
     pass
 
 
-class Reject(DeliveryException):
+class Reject(DeliveryError):
     pass
 
 
-class DeadLetter(DeliveryException):
+class DeadLetter(DeliveryError):
     pass
 
 

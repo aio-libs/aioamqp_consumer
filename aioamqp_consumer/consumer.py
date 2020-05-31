@@ -87,6 +87,10 @@ class Consumer(AMQPMixin):
         return self._closed
 
     def _on_error_callback(self, exc):
+        # TODO: _on_error_callback called twice on close
+        # (ChannelClosed(None, None), 'Channel is closed')
+        # (AmqpClosedConnection(), 'Channel is closed')
+
         super()._on_error_callback(exc)
         if not self._down.is_set():
             self._down.set()
