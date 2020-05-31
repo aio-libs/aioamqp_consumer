@@ -5,15 +5,9 @@ from aioamqp_consumer import RpcClient, RpcMethod, RpcServer
 
 @pytest.mark.asyncio
 async def test_rpc(amqp_queue_name, amqp_url, loop):
-    class TestRpcMethod(RpcMethod):
-
-        @property
-        def queue_name(self):
-            return amqp_queue_name
-
     test_data = b'test'
 
-    @TestRpcMethod
+    @RpcMethod.init(amqp_queue_name)
     async def test_method(payload):
         return payload
 

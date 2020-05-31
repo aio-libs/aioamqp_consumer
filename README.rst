@@ -80,7 +80,7 @@ RPC usage
     payload = b'test'
 
 
-    @RpcMethod
+    @RpcMethod.init(queue_name='random_queue')
     async def method(payload):
         return payload
 
