@@ -16,6 +16,7 @@ RpcCall = namedtuple(
         'queue_kwargs',
         'exchange_name',
         'exchange_kwargs',
+        'routing_key',
         'mandatory',
         'immediate',
     ),
@@ -94,9 +95,19 @@ class RpcClient(Consumer):
 
         await super()._connect()
 
+    async def warmup(self, method):
+        await self.ok()
+
+        await self._ensure(
+            queue_name=method.queue_name,
+            queue_kwargs=method.queue_kwargs,
+            exchange_name=method.exchange_name,
+            exchange_kwargs=method.exchange_kwargs,
+            routing_key=method.routing_key,
+        )
+
     async def call(self, rpc_call):
-        if not self._connected:
-            await self.ok()
+        await self.ok()
 
         corr_id = str(uuid.uuid1())
 
@@ -117,7 +128,7 @@ class RpcClient(Consumer):
         }
 
         await self._basic_publish(
-            rpc_call.payload,
+            payload=rpc_call.payload,
             exchange_name=rpc_call.exchange_name,
             routing_key=rpc_call.queue_name,
             properties=properties,
@@ -150,12 +161,14 @@ class RpcMethod:
         queue_kwargs,
         exchange_name,
         exchange_kwargs,
+        routing_key,
     ):
         self.fn = fn
-        self._queue_name = queue_name
+        self.queue_name = queue_name
         self.queue_kwargs = queue_kwargs
         self.exchange_name = exchange_name
         self.exchange_kwargs = exchange_kwargs
+        self.routing_key = routing_key
 
     _get_default_exchange_kwargs = Producer._get_default_exchange_kwargs
 
@@ -167,6 +180,7 @@ class RpcMethod:
         queue_kwargs=None,
         exchange_name='',
         exchange_kwargs=None,
+        routing_key='',
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
@@ -181,15 +195,12 @@ class RpcMethod:
                 queue_kwargs=queue_kwargs,
                 exchange_name=exchange_name,
                 exchange_kwargs=exchange_kwargs,
+                routing_key=routing_key,
             )
 
             return method
 
         return wrapper
-
-    @property
-    def queue_name(self):
-        return self._queue_name
 
     def __call__(self, payload):
         assert isinstance(payload, bytes)
@@ -200,6 +211,7 @@ class RpcMethod:
             queue_kwargs=self.queue_kwargs,
             exchange_name=self.exchange_name,
             exchange_kwargs=self.exchange_kwargs,
+            routing_key=self.routing_key,
             mandatory=self.mandatory,
             immediate=self.immediate,
         )
