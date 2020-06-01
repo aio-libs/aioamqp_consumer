@@ -247,6 +247,9 @@ class Consumer(AMQPMixin):
                 break
 
     async def ok(self, timeout=None):
+        if self._up.is_set():
+            return
+
         try:
             async with async_timeout.timeout(timeout):
                 await self._up.wait()
