@@ -8,7 +8,6 @@ from .exceptions import DeliveryError, RpcError
 from .log import logger
 from .producer import Producer
 
-
 RpcCall = namedtuple(
     'RpcCall',
     (
