@@ -16,8 +16,8 @@ Installation
 
     pip install aioamqp_consumer
 
-Consume/Producer usage
-----------------------
+Consumer/Producer usage
+-----------------------
 
 .. code-block:: python
 
