@@ -1,5 +1,4 @@
 import asyncio
-import os
 
 import uvloop
 from aioamqp_consumer import RpcClient
@@ -15,17 +14,31 @@ async def main():
 
     client = RpcClient(amqp_url)
 
-    n = 0
+    await client.warmup(method)
+
+    gather = req = res = 0
 
     async def go():
-        nonlocal n
+        nonlocal gather, req, res
+
+        if gather % 100 == 0:
+            print(gather, 'gather')
+
+        gather += 1
 
         fut = await client.call(method(payload))
+
+        if req % 100 == 0:
+            print(req, 'request')
+
+        req += 1
+
         assert payload == await fut
 
-        n += 1
-        if n % 100 == 0:
-            print(n)
+        res += 1
+
+        if res % 100 == 0:
+            print(res, 'response')
 
     coros = []
 
