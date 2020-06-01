@@ -91,6 +91,9 @@ class Producer(AMQPMixin):
                 )
 
     async def _ensure_queue(self, queue_name, queue_kwargs):
+        if queue_name in self._known_queues:
+            return
+
         async with self._ensure_queue_lock:
             if queue_name in self._known_queues:
                 return
@@ -103,6 +106,9 @@ class Producer(AMQPMixin):
             self._known_queues.add(queue_name)
 
     async def _ensure_exchange(self, exchange_name, exchange_kwargs):
+        if exchange_name in self._known_exchanges:
+            return
+
         async with self._ensure_exchange_lock:
             if exchange_name in self._known_exchanges:
                 return
@@ -115,11 +121,14 @@ class Producer(AMQPMixin):
             self._known_exchanges.add(exchange_name)
 
     async def _ensure_queue_bind(self, queue_name, exchange_name, routing_key):
+        routing_key = routing_key if routing_key else queue_name
+
+        key = (queue_name, exchange_name, routing_key)
+
+        if key in self._binded_queues:
+            return
+
         async with self._ensure_bind_queue_lock:
-            routing_key = routing_key if routing_key else queue_name
-
-            key = (queue_name, exchange_name, routing_key)
-
             if key in self._binded_queues:
                 return
 
@@ -157,14 +166,14 @@ class Producer(AMQPMixin):
         payload,
         queue_name,
         *,
+        queue_kwargs=None,
         exchange_name='',
+        exchange_kwargs=None,
         routing_key='',
         properties=None,
         # set False because of bug https://github.com/Polyconseil/aioamqp/issues/140  # noqa
         mandatory=False,
         immediate=False,
-        queue_kwargs=None,
-        exchange_kwargs=None,
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
@@ -183,7 +192,7 @@ class Producer(AMQPMixin):
         )
 
         return await self._basic_publish(
-            payload,
+            payload=payload,
             exchange_name=exchange_name,
             routing_key=routing_key if routing_key else queue_name,
             properties=properties,
@@ -195,6 +204,9 @@ class Producer(AMQPMixin):
         return await self._queue_purge(queue_name, **kwargs)
 
     async def _connect(self):
+        if self._connected:
+            return
+
         async with self._connect_lock:
             if not self._connected:
                 await super()._connect(self.amqp_url, **self.amqp_kwargs)
