@@ -15,7 +15,9 @@ class RpcCall:
 
     def __init__(
         self,
-        payload,
+        *,
+        args,
+        kwargs,
         queue_name,
         queue_kwargs,
         exchange_name,
@@ -25,7 +27,8 @@ class RpcCall:
         immediate,
         packer,
     ):
-        self.payload = payload
+        self.args = args
+        self.kwargs = kwargs
         self.queue_name = queue_name
         self.queue_kwargs = queue_kwargs
         self.exchange_name = exchange_name
@@ -40,7 +43,9 @@ class RpcCall:
         return self.packer.content_type
 
     async def request(self):
-        return await self.packer.marshall(self.payload)
+        payload = self.packer.pack(*self.args, **self.kwargs)
+
+        return await self.packer.marshall(payload)
 
     async def response(self, fut):
         shield = asyncio.shield(fut)
@@ -266,10 +271,9 @@ class RpcMethod:
         return wrapper
 
     def __call__(self, *args, **kwargs):
-        payload = self.packer.pack(*args, **kwargs)
-
         return RpcCall(
-            payload=payload,
+            args=args,
+            kwargs=kwargs,
             queue_name=self.queue_name,
             queue_kwargs=self.queue_kwargs,
             exchange_name=self.exchange_name,

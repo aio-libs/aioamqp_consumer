@@ -102,20 +102,22 @@ class RawPacker(Packer):
 
 class JsonPacker(Packer):
 
-    dumps = json.dumps
-
-    loads = json.loads
-
     @property
     def content_type(self):
         return 'application/json'
 
+    def _dumps(self, obj):
+        return json.dumps(obj)
+
+    def _loads(self, obj):
+        return json.loads(obj)
+
     async def _marshall(self, obj):
-        obj = await self.loop.run_in_executor(self.executor, self.dumps, obj)
+        obj = await self.loop.run_in_executor(self.executor, self._dumps, obj)
         obj = obj.encode('utf-8')
         return obj
 
     async def _unmarshall(self, obj):
         obj = obj.decode('utf-8')
-        obj = await self.loop.run_in_executor(self.executor, self.loads, obj)
+        obj = await self.loop.run_in_executor(self.executor, self._loads, obj)
         return obj
