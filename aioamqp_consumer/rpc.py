@@ -265,9 +265,9 @@ class RpcMethod:
     async def call(self, payload, properties, *, amqp_mixin):
         _properties = {'correlation_id': properties.correlation_id}
 
-        payload = await self.packer.unmarshall(payload)
-
         try:
+            payload = await self.packer.unmarshall(payload)
+
             ret = await self.fn(payload)
         except asyncio.CancelledError:
             raise
