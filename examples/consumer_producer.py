@@ -14,7 +14,8 @@ async def main():
     queue_kwargs = {
         'durable': True,
     }
-    amqp_kwargs = {}  # https://aioamqp.readthedocs.io/en/latest/api.html#aioamqp.connect
+    # https://aioamqp.readthedocs.io/en/latest/api.html#aioamqp.connect
+    amqp_kwargs = {}
 
     async with Producer(amqp_url, amqp_kwargs=amqp_kwargs) as producer:
         for _ in range(5):
@@ -33,7 +34,8 @@ async def main():
     )
     await consumer.scale(20)  # scale up to 20 background coroutines
     await consumer.scale(5)  # downscale to 5 background coroutines
-    await consumer.join()  # wait for rabbitmq queue is empty and all local messages are processed
+    # wait for rabbitmq queue is empty and all local messages are processed
+    await consumer.join()
     consumer.close()
     await consumer.wait_closed()
 

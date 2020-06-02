@@ -33,6 +33,7 @@ class Producer(AMQPMixin):
         self.exchange_declare = self._connection_guard(self.exchange_declare)
         self.queue_bind = self._connection_guard(self.queue_bind)
         self.queue_purge = self._connection_guard(self.queue_purge)
+        self.__aenter__ = self._connection_guard(self.__aenter__)
 
     def _connection_guard(self, fn):
         @wraps(fn)
@@ -225,6 +226,7 @@ class Producer(AMQPMixin):
         return self._disconnect()
 
     async def __aenter__(self):
+        await self.ok()
         return self
 
     async def __aexit__(self, *exc_info):

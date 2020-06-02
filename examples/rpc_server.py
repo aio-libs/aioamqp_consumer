@@ -1,6 +1,7 @@
 import asyncio
 
 import uvloop
+
 from aioamqp_consumer import RpcMethod, RpcServer
 
 

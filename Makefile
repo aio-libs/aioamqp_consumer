@@ -15,6 +15,9 @@ lint:
 	flake8 --show-source tests
 	isort --check-only -rc tests --diff
 
+	flake8 --show-source examples
+	isort --check-only -rc examples --diff
+
 test:
 	pytest tests
 

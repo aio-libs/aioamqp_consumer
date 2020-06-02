@@ -1,9 +1,10 @@
 import asyncio
 
 import uvloop
+
 from aioamqp_consumer import RpcClient
 
-from rpc_server import method
+from rpc_server import method  # isort:skip
 
 amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
 N = 10000
@@ -12,42 +13,39 @@ N = 10000
 async def main():
     payload = b'test'
 
-    client = RpcClient(amqp_url)
+    async with RpcClient(amqp_url) as client:
+        await client.warmup(method)
 
-    await client.warmup(method)
+        gather = req = res = 0
 
-    gather = req = res = 0
+        async def go():
+            nonlocal gather, req, res
 
-    async def go():
-        nonlocal gather, req, res
+            if gather % 100 == 0:
+                print(gather, 'gather')
 
-        if gather % 100 == 0:
-            print(gather, 'gather')
+            gather += 1
 
-        gather += 1
+            fut = await client.call(method(payload))
 
-        fut = await client.call(method(payload))
+            if req % 100 == 0:
+                print(req, 'request')
 
-        if req % 100 == 0:
-            print(req, 'request')
+            req += 1
 
-        req += 1
+            assert payload == await fut
 
-        assert payload == await fut
+            res += 1
 
-        res += 1
+            if res % 100 == 0:
+                print(res, 'response')
 
-        if res % 100 == 0:
-            print(res, 'response')
+        coros = []
 
-    coros = []
+        for i in range(N):
+            coros.append(go())
 
-    for i in range(N):
-        coros.append(go())
-
-    await asyncio.gather(*coros)
-
-    await client.close()
+        await asyncio.gather(*coros)
 
 
 if __name__ == '__main__':
