@@ -22,7 +22,8 @@ class Packer(abc.ABC):
         if self._marshal_is_coro:
             obj = await obj
 
-        assert isinstance(obj, bytes)
+        if not isinstance(obj, bytes):
+            raise NotImplementedError
 
         return obj
 
