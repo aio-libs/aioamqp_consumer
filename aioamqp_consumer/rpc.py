@@ -3,6 +3,8 @@ import uuid
 from collections import defaultdict
 from functools import partial
 
+from aioamqp import AioamqpException
+
 from . import settings
 from .consumer import Consumer
 from .exceptions import DeliveryError, Reject, RpcError
@@ -107,17 +109,16 @@ class RpcClient(Consumer):
     def _on_rpc_callback(self, payload, properties):
         corr_id = properties.correlation_id
 
-        assert corr_id in self._map
+        if corr_id in self._map:
+            fut = self._map[corr_id]
 
-        fut = self._map[corr_id]
+            if properties.content_type == RpcError.content_type:
+                err = RpcError.loads(payload)
 
-        if properties.content_type == RpcError.content_type:
-            err = RpcError.loads(payload)
-
-            fut.set_exception(err)
-            fut._log_traceback = False
-        else:
-            fut.set_result(payload)
+                fut.set_exception(err)
+                fut._log_traceback = False
+            else:
+                fut.set_result(payload)
 
     def _map_pop(self, fut, *, corr_id):
         self._map.pop(corr_id)
@@ -154,31 +155,35 @@ class RpcClient(Consumer):
             routing_key=rpc_call.queue_name,
         )
 
-        corr_id = str(uuid.uuid1())
+        _properties = {'content_type': rpc_call.content_type}
 
-        fut = self._map[corr_id]
-        fut._log_traceback = False
-        fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
+        if wait:
+            corr_id = str(uuid.uuid1())
 
-        properties = {
-            'reply_to': self.queue_name,
-            'correlation_id': corr_id,
-            'content_type': rpc_call.content_type,
-        }
+            fut = self._map[corr_id]
+            fut._log_traceback = False
+            fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
 
-        await self._basic_publish(
-            payload=payload,
-            exchange_name=rpc_call.exchange_name,
-            routing_key=rpc_call.queue_name,
-            properties=properties,
-            mandatory=rpc_call.mandatory,
-            immediate=rpc_call.immediate,
-        )
+            _properties['reply_to'] = self.queue_name
+            _properties['correlation_id'] = corr_id
 
-        if not wait:
-            return
+        try:
+            await self._basic_publish(
+                payload=payload,
+                exchange_name=rpc_call.exchange_name,
+                routing_key=rpc_call.queue_name,
+                properties=_properties,
+                mandatory=rpc_call.mandatory,
+                immediate=rpc_call.immediate,
+            )
+        except AioamqpException:
+            if wait:
+                self._map.pop(corr_id, None)
 
-        return await rpc_call.response(fut)
+            raise
+
+        if wait:
+            return await rpc_call.response(fut)
 
     def close(self):
         super().close()
@@ -288,7 +293,7 @@ class RpcMethod:
         )
 
     async def call(self, payload, properties, *, amqp_mixin):
-        _properties = {'correlation_id': properties.correlation_id}
+        _properties = {}
 
         try:
             if properties.content_type != self.packer.content_type:
@@ -304,7 +309,6 @@ class RpcMethod:
                 ret = await ret
 
             payload = await self.packer.marshall(ret)
-
             _properties['content_type'] = self.packer.content_type
         except asyncio.CancelledError:
             raise
@@ -322,14 +326,23 @@ class RpcMethod:
             payload = RpcError(exc).dumps()
             _properties['content_type'] = RpcError.content_type
 
-        await amqp_mixin._basic_publish(
-            payload=payload,
-            exchange_name=self.exchange_name,
-            routing_key=properties.reply_to,
-            properties=_properties,
-            mandatory=self.mandatory,
-            immediate=self.immediate,
-        )
+        if properties.reply_to is not None:
+            _properties['correlation_id'] = properties.correlation_id
+
+            try:
+                await amqp_mixin._basic_publish(
+                    payload=payload,
+                    exchange_name=self.exchange_name,
+                    routing_key=properties.reply_to,
+                    properties=_properties,
+                    mandatory=self.mandatory,
+                    immediate=self.immediate,
+                )
+            # TODO: not sure, seems Consumer doing that automatically
+            except AioamqpException as exc:
+                logger.warning(exc, exc_info=exc)
+
+                raise Reject from exc
 
 
 class RpcServer(Consumer):

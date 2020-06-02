@@ -1,4 +1,7 @@
+import asyncio
+
 import pytest
+from async_timeout import timeout
 
 from aioamqp_consumer import JsonRpcMethod, RpcClient, RpcMethod, RpcServer
 
@@ -60,5 +63,29 @@ async def test_rpc_no_payload(amqp_queue_name, amqp_url):
     assert test_result == test_data
 
     await client.close()
+
+    await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_rpc_no_wait(amqp_queue_name, amqp_url):
+    fut = asyncio.Future()
+
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method():
+        fut.set_result(None)
+
+    server = RpcServer(amqp_url, method=test_method)
+
+    client = RpcClient(amqp_url)
+
+    await client.call(test_method(), wait=False)
+
+    assert not client._map
+
+    await client.close()
+
+    async with timeout(1):
+        await fut
 
     await server.stop()
