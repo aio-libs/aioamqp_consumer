@@ -23,8 +23,8 @@ __all__ = (
     'Producer',
     'RawPacker',
     'Reject',
-    'RpcError',
     'RpcClient',
+    'RpcError',
     'RpcMethod',
     'RpcServer',
 )
