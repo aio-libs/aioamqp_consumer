@@ -50,8 +50,8 @@ class Consumer(AMQPMixin):
         self.task_timeout = task_timeout
         self.reconnect_delay = reconnect_delay
 
-        self.reject_exceptions = reject_exceptions + (Reject,)
-        self.dead_letter_exceptions = dead_letter_exceptions + (DeadLetter,)
+        self.reject_exceptions = reject_exceptions
+        self.dead_letter_exceptions = dead_letter_exceptions
 
         self.queue_kwargs = queue_kwargs
         self.amqp_kwargs = amqp_kwargs
@@ -67,7 +67,8 @@ class Consumer(AMQPMixin):
         self._up = asyncio.Event()
         self._queue_info = None
 
-        self._task_is_coro = asyncio.iscoroutinefunction(unpartial(self.task))
+        _fn = unpartial(self.task)
+        self._task_is_coro = asyncio.iscoroutinefunction(_fn)
 
         if self.task_timeout is not None and not self._task_is_coro:
             raise NotImplementedError

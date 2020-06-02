@@ -1,26 +1,61 @@
 import asyncio
 import uuid
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from functools import partial
 
+from aioamqp import AioamqpException
+
+from . import settings
 from .consumer import Consumer
-from .exceptions import DeliveryError, RpcError
+from .exceptions import DeliveryError, Reject, RpcError
 from .log import logger
 from .producer import Producer
+from .utils import unpartial
 
-RpcCall = namedtuple(
-    'RpcCall',
-    (
-        'payload',
-        'queue_name',
-        'queue_kwargs',
-        'exchange_name',
-        'exchange_kwargs',
-        'routing_key',
-        'mandatory',
-        'immediate',
-    ),
-)
+
+class RpcCall:
+
+    def __init__(
+        self,
+        *,
+        args,
+        kwargs,
+        queue_name,
+        queue_kwargs,
+        exchange_name,
+        exchange_kwargs,
+        routing_key,
+        mandatory,
+        immediate,
+        packer,
+    ):
+        self.args = args
+        self.kwargs = kwargs
+        self.queue_name = queue_name
+        self.queue_kwargs = queue_kwargs
+        self.exchange_name = exchange_name
+        self.exchange_kwargs = exchange_kwargs
+        self.routing_key = routing_key
+        self.mandatory = mandatory
+        self.immediate = immediate
+        self.packer = packer
+
+    @property
+    def content_type(self):
+        return self.packer.content_type
+
+    async def request(self):
+        payload = self.packer.pack(*self.args, **self.kwargs)
+
+        return await self.packer.marshal(payload)
+
+    async def response(self, fut):
+        shield = asyncio.shield(fut)
+        shield._log_traceback = False
+
+        payload = await shield
+
+        return await self.packer.unmarshal(payload)
 
 
 class RpcClient(Consumer):
@@ -61,7 +96,8 @@ class RpcClient(Consumer):
         for fut in self._map.values():
             if not fut.done():
                 fut.set_exception(err)
-                fut._log_traceback = False
+
+            fut._log_traceback = False
 
     def _on_error_callback(self, exc):
         self._purge_map()
@@ -73,16 +109,16 @@ class RpcClient(Consumer):
     def _on_rpc_callback(self, payload, properties):
         corr_id = properties.correlation_id
 
-        assert corr_id in self._map
+        if corr_id in self._map:
+            fut = self._map[corr_id]
 
-        fut = self._map[corr_id]
+            if properties.content_type == RpcError.content_type:
+                err = RpcError.loads(payload)
 
-        if properties.content_type == RpcError.content_type:
-            err = RpcError.loads(payload)
-
-            fut.set_exception(err)
-        else:
-            fut.set_result(payload)
+                fut.set_exception(err)
+                fut._log_traceback = False
+            else:
+                fut.set_result(payload)
 
     def _map_pop(self, fut, *, corr_id):
         self._map.pop(corr_id)
@@ -106,13 +142,10 @@ class RpcClient(Consumer):
             routing_key=method.routing_key,
         )
 
-    async def call(self, rpc_call):
+    async def call(self, rpc_call, *, wait=True):
+        payload = await rpc_call.request()
+
         await self.ok()
-
-        corr_id = str(uuid.uuid1())
-
-        fut = self._map[corr_id]
-        fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
 
         await self._ensure(
             queue_name=rpc_call.queue_name,
@@ -122,21 +155,36 @@ class RpcClient(Consumer):
             routing_key=rpc_call.queue_name,
         )
 
-        properties = {
-            'reply_to': self.queue_name,
-            'correlation_id': corr_id,
-        }
+        _properties = {'content_type': rpc_call.content_type}
 
-        await self._basic_publish(
-            payload=rpc_call.payload,
-            exchange_name=rpc_call.exchange_name,
-            routing_key=rpc_call.queue_name,
-            properties=properties,
-            mandatory=rpc_call.mandatory,
-            immediate=rpc_call.immediate,
-        )
+        if wait:
+            corr_id = str(uuid.uuid1())
 
-        return asyncio.shield(fut)
+            fut = self._map[corr_id]
+            fut._log_traceback = False
+            fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
+
+            _properties['reply_to'] = self.queue_name
+            _properties['correlation_id'] = corr_id
+
+        try:
+            await self._basic_publish(
+                payload=payload,
+                exchange_name=rpc_call.exchange_name,
+                routing_key=rpc_call.queue_name,
+                properties=_properties,
+                mandatory=rpc_call.mandatory,
+                immediate=rpc_call.immediate,
+            )
+        except AioamqpException:
+            if wait:
+                if corr_id in self._map:
+                    self._map.pop(corr_id, None)
+
+            raise
+
+        if wait:
+            return await rpc_call.response(fut)
 
     def close(self):
         super().close()
@@ -153,24 +201,39 @@ class RpcMethod:
 
     immediate = False
 
+    default_packer_cls = None
+
     def __init__(
         self,
-        fn,
+        method,
         *,
         queue_name,
         queue_kwargs,
         exchange_name,
         exchange_kwargs,
         routing_key,
+        packer,
+        auto_reject,
+        auto_reject_delay,
     ):
-        self.fn = fn
+        self.method = method
         self.queue_name = queue_name
         self.queue_kwargs = queue_kwargs
         self.exchange_name = exchange_name
         self.exchange_kwargs = exchange_kwargs
         self.routing_key = routing_key
+        self.packer = packer
+        self.auto_reject = auto_reject
+        self.auto_reject_delay = auto_reject_delay
+
+        _fn = unpartial(self.method)
+        self._method_is_coro = asyncio.iscoroutinefunction(_fn)
 
     _get_default_exchange_kwargs = Producer._get_default_exchange_kwargs
+
+    @classmethod
+    def remote_init(cls, *args, **kwargs):
+        return cls.init(*args, **kwargs)(None)
 
     @classmethod
     def init(
@@ -181,6 +244,10 @@ class RpcMethod:
         exchange_name='',
         exchange_kwargs=None,
         routing_key='',
+        packer=None,
+        packer_cls=None,
+        auto_reject=False,
+        auto_reject_delay=None,
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
@@ -188,25 +255,38 @@ class RpcMethod:
         if exchange_kwargs is None:
             exchange_kwargs = cls._get_default_exchange_kwargs()
 
-        def wrapper(fn):
+        if packer and packer_cls:
+            raise NotImplementedError
+
+        if packer is None:
+            if packer_cls is not None:
+                packer = packer_cls()
+            elif cls.default_packer_cls is not None:
+                packer = cls.default_packer_cls()
+            else:
+                packer = settings.DEFAULT_PACKER_CLS()
+
+        def wrapper(method):
             method = cls(
-                fn,
+                method,
                 queue_name=queue_name,
                 queue_kwargs=queue_kwargs,
                 exchange_name=exchange_name,
                 exchange_kwargs=exchange_kwargs,
                 routing_key=routing_key,
+                packer=packer,
+                auto_reject=auto_reject,
+                auto_reject_delay=auto_reject_delay,
             )
 
             return method
 
         return wrapper
 
-    def __call__(self, payload):
-        assert isinstance(payload, bytes)
-
+    def __call__(self, *args, **kwargs):
         return RpcCall(
-            payload=payload,
+            args=args,
+            kwargs=kwargs,
             queue_name=self.queue_name,
             queue_kwargs=self.queue_kwargs,
             exchange_name=self.exchange_name,
@@ -214,13 +294,27 @@ class RpcMethod:
             routing_key=self.routing_key,
             mandatory=self.mandatory,
             immediate=self.immediate,
+            packer=self.packer,
         )
 
     async def call(self, payload, properties, *, amqp_mixin):
-        _properties = {'correlation_id': properties.correlation_id}
+        _properties = {}
 
         try:
-            ret = await self.fn(payload)
+            if properties.content_type != self.packer.content_type:
+                raise NotImplementedError
+
+            obj = await self.packer.unmarshal(payload)
+
+            args, kwargs = self.packer.unpack(obj)
+
+            ret = self.method(*args, **kwargs)
+
+            if self._method_is_coro:
+                ret = await ret
+
+            payload = await self.packer.marshal(ret)
+            _properties['content_type'] = self.packer.content_type
         except asyncio.CancelledError:
             raise
         except DeliveryError:
@@ -228,26 +322,37 @@ class RpcMethod:
         except Exception as exc:
             logger.warning(exc, exc_info=exc)
 
-            ret = RpcError(exc).dumps()
+            if self.auto_reject:
+                if self.auto_reject_delay is not None:
+                    await asyncio.sleep(self.auto_reject_delay)
+
+                raise Reject from exc
+
+            payload = RpcError(exc).dumps()
             _properties['content_type'] = RpcError.content_type
-        else:
-            assert isinstance(ret, bytes)
 
-        await amqp_mixin._basic_publish(
-            payload=ret,
-            exchange_name=self.exchange_name,
-            routing_key=properties.reply_to,
-            properties=_properties,
-            mandatory=self.mandatory,
-            immediate=self.immediate,
-        )
+        if properties.reply_to is not None:
+            _properties['correlation_id'] = properties.correlation_id
 
-        return ret
+            try:
+                await amqp_mixin._basic_publish(
+                    payload=payload,
+                    exchange_name=self.exchange_name,
+                    routing_key=properties.reply_to,
+                    properties=_properties,
+                    mandatory=self.mandatory,
+                    immediate=self.immediate,
+                )
+            # TODO: not sure, seems Consumer doing that automatically
+            except AioamqpException as exc:
+                logger.warning(exc, exc_info=exc)
+
+                raise Reject from exc
 
 
 class RpcServer(Consumer):
 
-    def __init__(self, amqp_url, method, **kwargs):
+    def __init__(self, amqp_url, *, method, **kwargs):
         kwargs.setdefault('tasks_per_worker', 1)
         args = (amqp_url, method.call, method.queue_name)
 
