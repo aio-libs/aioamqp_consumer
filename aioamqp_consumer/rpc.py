@@ -284,6 +284,9 @@ class RpcMethod:
         _properties = {'correlation_id': properties.correlation_id}
 
         try:
+            if properties.content_type != self.packer.content_type:
+                raise NotImplementedError
+
             obj = await self.packer.unmarshall(payload)
 
             args, kwargs = self.packer.unpack(obj)
