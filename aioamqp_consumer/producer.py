@@ -240,7 +240,7 @@ class Producer(
         return self._disconnect()
 
     async def __aenter__(self):
-        await self.ok()
+        await self._connect()
         return self
 
     async def __aexit__(self, *exc_info):
