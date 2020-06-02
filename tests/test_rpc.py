@@ -89,3 +89,26 @@ async def test_rpc_no_wait(amqp_queue_name, amqp_url):
         await fut
 
     await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_rpc_remote_init(amqp_queue_name, amqp_url):
+    test_data = b'test'
+
+    @RpcMethod.init(amqp_queue_name)
+    async def local_test_method(payload):
+        return payload
+
+    server = RpcServer(amqp_url, method=local_test_method)
+
+    client = RpcClient(amqp_url)
+
+    remote_test_method = RpcMethod.remote_init(amqp_queue_name)
+
+    test_result = await client.call(remote_test_method(test_data))
+
+    assert test_result == test_data
+
+    await client.close()
+
+    await server.stop()

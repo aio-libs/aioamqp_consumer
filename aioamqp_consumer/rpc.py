@@ -232,6 +232,10 @@ class RpcMethod:
     _get_default_exchange_kwargs = Producer._get_default_exchange_kwargs
 
     @classmethod
+    def remote_init(cls, *args, **kwargs):
+        return cls.init(*args, **kwargs)(None)
+
+    @classmethod
     def init(
         cls,
         queue_name,
