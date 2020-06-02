@@ -92,9 +92,7 @@ RPC usage
 
         client = RpcClient(amqp_url)
 
-        fut = await client.call(method(payload))
-        # `method(payload)` will be executed, awaiting result is optional
-        ret = await fut
+        ret = await client.call(method(payload))
 
         assert ret == payload
 
@@ -106,6 +104,8 @@ RPC usage
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.close()
+
+For built-in json encoding/decoding, take a look on `aioamqp_consumer.JsonRpcMethod`
 
 Thanks
 ------
