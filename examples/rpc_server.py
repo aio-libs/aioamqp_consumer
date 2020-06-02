@@ -1,14 +1,14 @@
 import asyncio
 
-from aioamqp_consumer import JsonPacker, RpcMethod, RpcServer
+from aioamqp_consumer import JsonRpcMethod, RpcServer
 
 amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
 
 
-@RpcMethod.init(queue_name='random_queue', packer=JsonPacker())
-async def square(x):
-    print(x)
-    return x ** 2
+@JsonRpcMethod.init(queue_name='random_queue')
+async def square(*args, **kwargs):
+    print(args, kwargs)
+    return kwargs['x'] ** 2
 
 
 if __name__ == '__main__':

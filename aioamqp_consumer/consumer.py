@@ -67,7 +67,8 @@ class Consumer(AMQPMixin):
         self._up = asyncio.Event()
         self._queue_info = None
 
-        self._task_is_coro = asyncio.iscoroutinefunction(unpartial(self.task))
+        _fn = unpartial(self.task)
+        self._task_is_coro = asyncio.iscoroutinefunction(_fn)
 
         if self.task_timeout is not None and not self._task_is_coro:
             raise NotImplementedError

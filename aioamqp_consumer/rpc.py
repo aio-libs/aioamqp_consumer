@@ -8,9 +8,13 @@ from .consumer import Consumer
 from .exceptions import DeliveryError, RpcError
 from .log import logger
 from .producer import Producer
+from .utils import unpartial
 
 
 class RpcCall:
+
+    ARGS = 'a'
+    KWARGS = 'k'
 
     def __init__(
         self,
@@ -23,7 +27,6 @@ class RpcCall:
         mandatory,
         immediate,
         packer,
-        wait,
     ):
         self.payload = payload
         self.queue_name = queue_name
@@ -34,19 +37,49 @@ class RpcCall:
         self.mandatory = mandatory
         self.immediate = immediate
         self.packer = packer
-        self.wait = wait
 
     @property
     def content_type(self):
         return self.packer.content_type
 
     async def request(self):
+        if self.payload == self.empty_payload:
+            return self.empty_payload
+
         return await self.packer.marshall(self.payload)
 
     async def response(self, fut):
-        payload = await asyncio.shield(fut)
+        shield = asyncio.shield(fut)
+        shield._log_traceback = False
+
+        payload = await shield
 
         return await self.packer.unmarshall(payload)
+
+    empty_payload = b''
+
+    @classmethod
+    def marshall(cls, *args, **kwargs):
+        payload = {}
+
+        if args:
+            payload[cls.ARGS] = args
+
+        if kwargs:
+            payload[cls.KWARGS] = kwargs
+
+        if payload:
+            return payload
+
+        return cls.empty_payload
+
+    @classmethod
+    def unmarshall(cls, obj):
+        args = obj.get(cls.ARGS, [])
+
+        kwargs = obj.get(cls.KWARGS, {})
+
+        return args, kwargs
 
 
 class RpcClient(Consumer):
@@ -87,7 +120,8 @@ class RpcClient(Consumer):
         for fut in self._map.values():
             if not fut.done():
                 fut.set_exception(err)
-                fut._log_traceback = False
+
+            fut._log_traceback = False
 
     def _on_error_callback(self, exc):
         self._purge_map()
@@ -107,6 +141,7 @@ class RpcClient(Consumer):
             err = RpcError.loads(payload)
 
             fut.set_exception(err)
+            fut._log_traceback = False
         else:
             fut.set_result(payload)
 
@@ -132,7 +167,7 @@ class RpcClient(Consumer):
             routing_key=method.routing_key,
         )
 
-    async def call(self, rpc_call):
+    async def call(self, rpc_call, *, wait=True):
         payload = await rpc_call.request()
 
         await self.ok()
@@ -148,6 +183,7 @@ class RpcClient(Consumer):
         corr_id = str(uuid.uuid1())
 
         fut = self._map[corr_id]
+        fut._log_traceback = False
         fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
 
         properties = {
@@ -165,7 +201,7 @@ class RpcClient(Consumer):
             immediate=rpc_call.immediate,
         )
 
-        if not rpc_call.wait:
+        if not wait:
             return
 
         return await rpc_call.response(fut)
@@ -185,9 +221,11 @@ class RpcMethod:
 
     immediate = False
 
+    default_packer_cls = None
+
     def __init__(
         self,
-        fn,
+        method,
         *,
         queue_name,
         queue_kwargs,
@@ -196,13 +234,16 @@ class RpcMethod:
         routing_key,
         packer,
     ):
-        self.fn = fn
+        self.method = method
         self.queue_name = queue_name
         self.queue_kwargs = queue_kwargs
         self.exchange_name = exchange_name
         self.exchange_kwargs = exchange_kwargs
         self.routing_key = routing_key
         self.packer = packer
+
+        _fn = unpartial(self.method)
+        self._method_is_coro = asyncio.iscoroutinefunction(_fn)
 
     _get_default_exchange_kwargs = Producer._get_default_exchange_kwargs
 
@@ -227,15 +268,18 @@ class RpcMethod:
         if packer and packer_cls:
             raise NotImplementedError
 
-        if packer_cls is not None:
-            packer = packer_cls()
-
         if packer is None:
-            packer = settings.DEFAULT_PACKER
+            if packer_cls is not None:
+                packer = packer_cls()
 
-        def wrapper(fn):
+            elif cls.default_packer_cls is not None:
+                packer = cls.default_packer_cls()
+            else:
+                packer = settings.DEFAULT_PACKER_CLS()
+
+        def wrapper(method):
             method = cls(
-                fn,
+                method,
                 queue_name=queue_name,
                 queue_kwargs=queue_kwargs,
                 exchange_name=exchange_name,
@@ -248,7 +292,9 @@ class RpcMethod:
 
         return wrapper
 
-    def __call__(self, payload, *, wait=True):
+    def __call__(self, *args, **kwargs):
+        payload = RpcCall.marshall(*args, **kwargs)
+
         return RpcCall(
             payload=payload,
             queue_name=self.queue_name,
@@ -259,16 +305,20 @@ class RpcMethod:
             mandatory=self.mandatory,
             immediate=self.immediate,
             packer=self.packer,
-            wait=wait,
         )
 
     async def call(self, payload, properties, *, amqp_mixin):
         _properties = {'correlation_id': properties.correlation_id}
 
         try:
-            payload = await self.packer.unmarshall(payload)
+            obj = await self.packer.unmarshall(payload)
 
-            ret = await self.fn(payload)
+            args, kwargs = RpcCall.unmarshall(obj)
+
+            ret = self.method(*args, **kwargs)
+
+            if self._method_is_coro:
+                ret = await ret
         except asyncio.CancelledError:
             raise
         except DeliveryError:
