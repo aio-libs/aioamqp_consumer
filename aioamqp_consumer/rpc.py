@@ -208,7 +208,7 @@ class RpcMethod:
         routing_key,
         packer,
         auto_reject,
-        auto_reject_delay=None,
+        auto_reject_delay,
     ):
         self.method = method
         self.queue_name = queue_name
@@ -237,6 +237,7 @@ class RpcMethod:
         packer=None,
         packer_cls=None,
         auto_reject=False,
+        auto_reject_delay=None,
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
@@ -266,6 +267,7 @@ class RpcMethod:
                 routing_key=routing_key,
                 packer=packer,
                 auto_reject=auto_reject,
+                auto_reject_delay=auto_reject_delay,
             )
 
             return method
