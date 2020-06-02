@@ -21,7 +21,7 @@ async def main():
 
             gather += 1
 
-            await client.call(square(x=x))
+            await client.wait(square(x=x))
 
             res += 1
 

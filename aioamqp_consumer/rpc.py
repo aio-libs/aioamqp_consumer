@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from collections import defaultdict
-from functools import partial
+from functools import partial, partialmethod
 
 from aioamqp import AioamqpException
 
@@ -143,7 +143,7 @@ class RpcClient(Consumer):
             routing_key=method.routing_key,
         )
 
-    async def call(self, rpc_call, *, wait=True):
+    async def call(self, rpc_call, *, wait=False):
         payload = await rpc_call.request()
 
         await self.ok()
@@ -186,6 +186,8 @@ class RpcClient(Consumer):
 
         if wait:
             return await rpc_call.response(fut)
+
+    wait = partialmethod(call, wait=True)
 
     def close(self):
         super().close()
