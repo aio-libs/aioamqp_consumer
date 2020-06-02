@@ -295,6 +295,10 @@ class RpcMethod:
 
             if self._method_is_coro:
                 ret = await ret
+
+            payload = await self.packer.marshall(ret)
+
+            _properties['content_type'] = self.packer.content_type
         except asyncio.CancelledError:
             raise
         except DeliveryError:
@@ -305,14 +309,11 @@ class RpcMethod:
             if self.auto_reject:
                 raise Reject from exc
 
-            ret = RpcError(exc).dumps()
+            payload = RpcError(exc).dumps()
             _properties['content_type'] = RpcError.content_type
-        else:
-            ret = await self.packer.marshall(ret)
-            _properties['content_type'] = self.packer.content_type
 
         await amqp_mixin._basic_publish(
-            payload=ret,
+            payload=payload,
             exchange_name=self.exchange_name,
             routing_key=properties.reply_to,
             properties=_properties,
