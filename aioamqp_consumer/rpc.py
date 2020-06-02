@@ -1,26 +1,52 @@
 import asyncio
 import uuid
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from functools import partial
 
+from . import settings
 from .consumer import Consumer
 from .exceptions import DeliveryError, RpcError
 from .log import logger
 from .producer import Producer
 
-RpcCall = namedtuple(
-    'RpcCall',
-    (
-        'payload',
-        'queue_name',
-        'queue_kwargs',
-        'exchange_name',
-        'exchange_kwargs',
-        'routing_key',
-        'mandatory',
-        'immediate',
-    ),
-)
+
+class RpcCall:
+
+    def __init__(
+        self,
+        payload,
+        queue_name,
+        queue_kwargs,
+        exchange_name,
+        exchange_kwargs,
+        routing_key,
+        mandatory,
+        immediate,
+        packer,
+        wait,
+    ):
+        self.payload = payload
+        self.queue_name = queue_name
+        self.queue_kwargs = queue_kwargs
+        self.exchange_name = exchange_name
+        self.exchange_kwargs = exchange_kwargs
+        self.routing_key = routing_key
+        self.mandatory = mandatory
+        self.immediate = immediate
+        self.packer = packer
+        self.wait = wait
+
+    @property
+    def content_type(self):
+        return self.packer.content_type
+
+    async def request(self):
+        return await self.packer.marshall(self.payload)
+
+    async def response(self, fut):
+        payload = await asyncio.shield(fut)
+
+        return await self.packer.unmarshall(payload)
 
 
 class RpcClient(Consumer):
@@ -107,12 +133,9 @@ class RpcClient(Consumer):
         )
 
     async def call(self, rpc_call):
+        payload = await rpc_call.request()
+
         await self.ok()
-
-        corr_id = str(uuid.uuid1())
-
-        fut = self._map[corr_id]
-        fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
 
         await self._ensure(
             queue_name=rpc_call.queue_name,
@@ -122,13 +145,19 @@ class RpcClient(Consumer):
             routing_key=rpc_call.queue_name,
         )
 
+        corr_id = str(uuid.uuid1())
+
+        fut = self._map[corr_id]
+        fut.add_done_callback(partial(self._map_pop, corr_id=corr_id))
+
         properties = {
             'reply_to': self.queue_name,
             'correlation_id': corr_id,
+            'content_type': rpc_call.content_type,
         }
 
         await self._basic_publish(
-            payload=rpc_call.payload,
+            payload=payload,
             exchange_name=rpc_call.exchange_name,
             routing_key=rpc_call.queue_name,
             properties=properties,
@@ -136,7 +165,10 @@ class RpcClient(Consumer):
             immediate=rpc_call.immediate,
         )
 
-        return asyncio.shield(fut)
+        if not rpc_call.wait:
+            return
+
+        return await rpc_call.response(fut)
 
     def close(self):
         super().close()
@@ -162,6 +194,7 @@ class RpcMethod:
         exchange_name,
         exchange_kwargs,
         routing_key,
+        packer,
     ):
         self.fn = fn
         self.queue_name = queue_name
@@ -169,6 +202,7 @@ class RpcMethod:
         self.exchange_name = exchange_name
         self.exchange_kwargs = exchange_kwargs
         self.routing_key = routing_key
+        self.packer = packer
 
     _get_default_exchange_kwargs = Producer._get_default_exchange_kwargs
 
@@ -181,12 +215,23 @@ class RpcMethod:
         exchange_name='',
         exchange_kwargs=None,
         routing_key='',
+        packer=None,
+        packer_cls=None,
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
 
         if exchange_kwargs is None:
             exchange_kwargs = cls._get_default_exchange_kwargs()
+
+        if packer and packer_cls:
+            raise NotImplementedError
+
+        if packer_cls is not None:
+            packer = packer_cls()
+
+        if packer is None:
+            packer = settings.DEFAULT_PACKER
 
         def wrapper(fn):
             method = cls(
@@ -196,15 +241,14 @@ class RpcMethod:
                 exchange_name=exchange_name,
                 exchange_kwargs=exchange_kwargs,
                 routing_key=routing_key,
+                packer=packer,
             )
 
             return method
 
         return wrapper
 
-    def __call__(self, payload):
-        assert isinstance(payload, bytes)
-
+    def __call__(self, payload, *, wait=True):
         return RpcCall(
             payload=payload,
             queue_name=self.queue_name,
@@ -214,10 +258,14 @@ class RpcMethod:
             routing_key=self.routing_key,
             mandatory=self.mandatory,
             immediate=self.immediate,
+            packer=self.packer,
+            wait=wait,
         )
 
     async def call(self, payload, properties, *, amqp_mixin):
         _properties = {'correlation_id': properties.correlation_id}
+
+        payload = await self.packer.unmarshall(payload)
 
         try:
             ret = await self.fn(payload)
@@ -231,7 +279,8 @@ class RpcMethod:
             ret = RpcError(exc).dumps()
             _properties['content_type'] = RpcError.content_type
         else:
-            assert isinstance(ret, bytes)
+            ret = await self.packer.marshall(ret)
+            _properties['content_type'] = self.packer.content_type
 
         await amqp_mixin._basic_publish(
             payload=ret,
@@ -242,12 +291,10 @@ class RpcMethod:
             immediate=self.immediate,
         )
 
-        return ret
-
 
 class RpcServer(Consumer):
 
-    def __init__(self, amqp_url, method, **kwargs):
+    def __init__(self, amqp_url, *, method, **kwargs):
         kwargs.setdefault('tasks_per_worker', 1)
         args = (amqp_url, method.call, method.queue_name)
 
