@@ -10,26 +10,26 @@ class Packer(abc.ABC):
     empty_payload = b''
 
     def __init__(self):
-        self._marshall_is_coro = asyncio.iscoroutinefunction(self._marshall)
-        self._unmarshall_is_coro = asyncio.iscoroutinefunction(self._unmarshall)
+        self._marshal_is_coro = asyncio.iscoroutinefunction(self._marshal)
+        self._unmarshal_is_coro = asyncio.iscoroutinefunction(self._unmarshal)
 
-    async def marshall(self, obj):
+    async def marshal(self, obj):
         if obj == self.empty_payload:
             return self.empty_payload
 
-        obj = self._marshall(obj)
+        obj = self._marshal(obj)
 
-        if self._marshall_is_coro:
+        if self._marshal_is_coro:
             obj = await obj
 
         assert isinstance(obj, bytes)
 
         return obj
 
-    async def unmarshall(self, obj):
-        obj = self._unmarshall(obj)
+    async def unmarshal(self, obj):
+        obj = self._unmarshal(obj)
 
-        if self._unmarshall_is_coro:
+        if self._unmarshal_is_coro:
             obj = await obj
 
         return obj
@@ -39,11 +39,11 @@ class Packer(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def _marshall(self, obj):
+    async def _marshal(self, obj):
         pass
 
     @abc.abstractmethod
-    async def _unmarshall(self, obj):
+    async def _unmarshal(self, obj):
         pass
 
     def pack(self, *args, **kwargs):
@@ -74,14 +74,20 @@ class RawPacker(Packer):
     def content_type(self):
         return 'application/octet-stream'
 
-    def _marshall(self, obj):
+    def _marshal(self, obj):
         return obj
 
-    def _unmarshall(self, obj):
+    def _unmarshal(self, obj):
         return obj
 
     def pack(self, *args, **kwargs):
+        if kwargs:
+            raise NotImplementedError
+
         if args:
+            if len(args) != 1:
+                raise NotImplementedError
+
             return args[0]
 
         return self.empty_payload
@@ -115,12 +121,12 @@ class JsonPacker(Packer):
     def _loads(self, obj):
         return json.loads(obj)
 
-    async def _marshall(self, obj):
+    async def _marshal(self, obj):
         obj = await self.loop.run_in_executor(self.executor, self._dumps, obj)
         obj = obj.encode('utf-8')
         return obj
 
-    async def _unmarshall(self, obj):
+    async def _unmarshal(self, obj):
         obj = obj.decode('utf-8')
         obj = await self.loop.run_in_executor(self.executor, self._loads, obj)
         return obj

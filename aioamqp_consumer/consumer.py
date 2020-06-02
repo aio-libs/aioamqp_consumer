@@ -50,8 +50,8 @@ class Consumer(AMQPMixin):
         self.task_timeout = task_timeout
         self.reconnect_delay = reconnect_delay
 
-        self.reject_exceptions = reject_exceptions + (Reject,)
-        self.dead_letter_exceptions = dead_letter_exceptions + (DeadLetter,)
+        self.reject_exceptions = reject_exceptions
+        self.dead_letter_exceptions = dead_letter_exceptions
 
         self.queue_kwargs = queue_kwargs
         self.amqp_kwargs = amqp_kwargs

@@ -47,7 +47,7 @@ class RpcCall:
     async def request(self):
         payload = self.packer.pack(*self.args, **self.kwargs)
 
-        return await self.packer.marshall(payload)
+        return await self.packer.marshal(payload)
 
     async def response(self, fut):
         shield = asyncio.shield(fut)
@@ -55,7 +55,7 @@ class RpcCall:
 
         payload = await shield
 
-        return await self.packer.unmarshall(payload)
+        return await self.packer.unmarshal(payload)
 
 
 class RpcClient(Consumer):
@@ -304,7 +304,7 @@ class RpcMethod:
             if properties.content_type != self.packer.content_type:
                 raise NotImplementedError
 
-            obj = await self.packer.unmarshall(payload)
+            obj = await self.packer.unmarshal(payload)
 
             args, kwargs = self.packer.unpack(obj)
 
@@ -313,7 +313,7 @@ class RpcMethod:
             if self._method_is_coro:
                 ret = await ret
 
-            payload = await self.packer.marshall(ret)
+            payload = await self.packer.marshal(ret)
             _properties['content_type'] = self.packer.content_type
         except asyncio.CancelledError:
             raise
