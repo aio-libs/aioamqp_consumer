@@ -8,7 +8,7 @@ from aioamqp import AioamqpException
 from .consumer import Consumer
 from .exceptions import DeliveryError, Reject, RpcError
 from .log import logger
-from .packer import get_packer
+from .packer import PackerMixin
 from .producer import Producer
 from .utils import unpartial
 
@@ -196,13 +196,11 @@ class RpcClient(Consumer):
         await self.close()
 
 
-class RpcMethod:
+class RpcMethod(PackerMixin):
 
     mandatory = False
 
     immediate = False
-
-    default_packer_cls = None
 
     def __init__(
         self,
@@ -256,8 +254,7 @@ class RpcMethod:
         if exchange_kwargs is None:
             exchange_kwargs = cls._get_default_exchange_kwargs()
 
-        packer = get_packer(
-            cls,
+        packer = cls.get_packer(
             packer=packer,
             packer_cls=packer_cls,
             _no_packer=False,

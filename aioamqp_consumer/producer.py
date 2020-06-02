@@ -3,10 +3,14 @@ from functools import wraps
 
 from aioamqp import AioamqpException
 
-from .mixins import AMQPMixin
+from .amqp import AMQPMixin
+from .packer import PackerMixin
 
 
-class Producer(AMQPMixin):
+class Producer(
+    PackerMixin,
+    AMQPMixin,
+):
 
     def __init__(
         self,

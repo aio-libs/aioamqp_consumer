@@ -1,20 +1,9 @@
-import aioamqp
+from aioamqp import AioamqpException, from_url
 
 from .log import logger
-from .packer import get_packer
 
 
 class AMQPMixin:
-
-    default_packer_cls = None
-
-    def __init__(self, *, packer, packer_cls, _no_packer):
-        self.packer = get_packer(
-            self,
-            packer=packer,
-            packer_cls=packer_cls,
-            _no_packer=_no_packer,
-        )
 
     _connected = _closed = False
     _transport = _protocol = _channel = None
@@ -49,12 +38,12 @@ class AMQPMixin:
         kwargs['on_error'] = on_error
 
         try:
-            self._transport, self._protocol = await aioamqp.from_url(
+            self._transport, self._protocol = await from_url(
                 url,
                 **kwargs,
             )
         except OSError as exc:
-            raise aioamqp.AioamqpException from exc
+            raise AioamqpException from exc
 
         self._channel = await self._protocol.channel()
 
@@ -71,7 +60,7 @@ class AMQPMixin:
 
                     msg = 'Amqp channel is closed'
                     logger.debug(msg)
-                except aioamqp.AioamqpException:
+                except AioamqpException:
                     pass
 
             try:
@@ -81,7 +70,7 @@ class AMQPMixin:
 
                 msg = 'Amqp protocol and transport are closed'
                 logger.debug(msg)
-            except (aioamqp.AioamqpException, AttributeError):
+            except (AioamqpException, AttributeError):
                 # AttributeError tmp hotfix
                 pass
 
