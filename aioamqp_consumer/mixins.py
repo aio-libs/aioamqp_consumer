@@ -1,9 +1,20 @@
 import aioamqp
 
 from .log import logger
+from .packer import get_packer
 
 
 class AMQPMixin:
+
+    default_packer_cls = None
+
+    def __init__(self, *, packer, packer_cls, _no_packer):
+        self.packer = get_packer(
+            self,
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=_no_packer,
+        )
 
     _connected = _closed = False
     _transport = _protocol = _channel = None

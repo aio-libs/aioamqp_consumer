@@ -5,10 +5,10 @@ from functools import partial
 
 from aioamqp import AioamqpException
 
-from . import settings
 from .consumer import Consumer
 from .exceptions import DeliveryError, Reject, RpcError
 from .log import logger
+from .packer import get_packer
 from .producer import Producer
 from .utils import unpartial
 
@@ -65,6 +65,7 @@ class RpcClient(Consumer):
     def __init__(self, amqp_url, **kwargs):
         kwargs.setdefault('queue_kwargs', {'exclusive': True})
         kwargs['concurrency'] = 1
+        kwargs['_no_packer'] = True
 
         super().__init__(amqp_url, self._on_rpc_callback, '', **kwargs)
 
@@ -255,16 +256,12 @@ class RpcMethod:
         if exchange_kwargs is None:
             exchange_kwargs = cls._get_default_exchange_kwargs()
 
-        if packer and packer_cls:
-            raise NotImplementedError
-
-        if packer is None:
-            if packer_cls is not None:
-                packer = packer_cls()
-            elif cls.default_packer_cls is not None:
-                packer = cls.default_packer_cls()
-            else:
-                packer = settings.DEFAULT_PACKER_CLS()
+        packer = get_packer(
+            cls,
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=False,
+        )
 
         def wrapper(method):
             method = cls(
@@ -354,6 +351,8 @@ class RpcServer(Consumer):
 
     def __init__(self, amqp_url, *, method, **kwargs):
         kwargs.setdefault('tasks_per_worker', 1)
+        kwargs['_no_packer'] = True
+
         args = (amqp_url, method.call, method.queue_name)
 
         super().__init__(*args, **kwargs)

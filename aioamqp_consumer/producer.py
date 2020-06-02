@@ -13,6 +13,9 @@ class Producer(AMQPMixin):
         amqp_url,
         *,
         amqp_kwargs=None,
+        packer=None,
+        packer_cls=None,
+        _no_packer=False,
     ):
         if amqp_kwargs is None:
             amqp_kwargs = {}
@@ -34,6 +37,12 @@ class Producer(AMQPMixin):
         self.queue_bind = self._connection_guard(self.queue_bind)
         self.queue_purge = self._connection_guard(self.queue_purge)
         self.__aenter__ = self._connection_guard(self.__aenter__)
+
+        super().__init__(
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=_no_packer,
+        )
 
     def _connection_guard(self, fn):
         @wraps(fn)
@@ -182,7 +191,8 @@ class Producer(AMQPMixin):
         if exchange_kwargs is None:
             exchange_kwargs = self._get_default_exchange_kwargs()
 
-        assert isinstance(payload, bytes)
+        if self.packer is not None:
+            payload = await self.packer.marshal(payload)
 
         await self._ensure(
             queue_name=queue_name,

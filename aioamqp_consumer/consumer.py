@@ -30,6 +30,9 @@ class Consumer(AMQPMixin):
         dead_letter_exceptions=tuple(),
         queue_kwargs=None,
         amqp_kwargs=None,
+        packer=None,
+        packer_cls=None,
+        _no_packer=False,
     ):
         if concurrency <= 0:
             raise NotImplementedError
@@ -72,6 +75,12 @@ class Consumer(AMQPMixin):
 
         if self.task_timeout is not None and not self._task_is_coro:
             raise NotImplementedError
+
+        super().__init__(
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=_no_packer,
+        )
 
         self.__monitor = self.loop.create_task(self._monitor())
 
@@ -164,6 +173,9 @@ class Consumer(AMQPMixin):
     async def _run_task(self, payload, properties, delivery_tag):
         try:
             try:
+                if self.packer is not None:
+                    payload = await self.packer.unmarshal(payload)
+
                 _task = self._wrap(payload, properties)
             except self.reject_exceptions as exc:
                 raise Reject from exc
