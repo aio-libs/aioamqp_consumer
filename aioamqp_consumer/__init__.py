@@ -7,6 +7,16 @@ from .rpc import RpcClient, RpcMethod, RpcServer
 __version__ = '0.2.0'
 
 
+class JsonConsumer(Consumer):
+
+    default_packer_cls = JsonPacker
+
+
+class JsonProducer(Producer):
+
+    default_packer_cls = JsonPacker
+
+
 class JsonRpcMethod(RpcMethod):
 
     default_packer_cls = JsonPacker
@@ -32,7 +42,9 @@ __all__ = (
     'Consumer',
     'DeadLetter',
     'DeliveryError',
+    'JsonConsumer',
     'JsonPacker',
+    'JsonProducer',
     'JsonRpcMethod',
     'Packer',
     'Producer',
