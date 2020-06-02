@@ -9,10 +9,7 @@ class Packer(abc.ABC):
     KWARGS = 'k'
     empty_payload = b''
 
-    def __init__(self, *, executor=None):
-        self.executor = executor
-        self.loop = asyncio.get_event_loop()
-
+    def __init__(self):
         self._marshall_is_coro = asyncio.iscoroutinefunction(self._marshall)
         self._unmarshall_is_coro = asyncio.iscoroutinefunction(self._unmarshall)
 
@@ -101,6 +98,12 @@ class RawPacker(Packer):
 
 
 class JsonPacker(Packer):
+
+    def __init__(self, *, executor=None):
+        self.executor = executor
+        self.loop = asyncio.get_event_loop()
+
+        super().__init__()
 
     @property
     def content_type(self):
