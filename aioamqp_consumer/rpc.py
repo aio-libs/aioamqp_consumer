@@ -178,7 +178,8 @@ class RpcClient(Consumer):
             )
         except AioamqpException:
             if wait:
-                self._map.pop(corr_id, None)
+                if corr_id in self._map:
+                    self._map.pop(corr_id, None)
 
             raise
 
