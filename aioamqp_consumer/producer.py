@@ -3,16 +3,23 @@ from functools import wraps
 
 from aioamqp import AioamqpException
 
-from .mixins import AMQPMixin
+from .amqp import AMQPMixin
+from .packer import PackerMixin
 
 
-class Producer(AMQPMixin):
+class Producer(
+    PackerMixin,
+    AMQPMixin,
+):
 
     def __init__(
         self,
         amqp_url,
         *,
         amqp_kwargs=None,
+        packer=None,
+        packer_cls=None,
+        _no_packer=False,
     ):
         if amqp_kwargs is None:
             amqp_kwargs = {}
@@ -33,6 +40,13 @@ class Producer(AMQPMixin):
         self.exchange_declare = self._connection_guard(self.exchange_declare)
         self.queue_bind = self._connection_guard(self.queue_bind)
         self.queue_purge = self._connection_guard(self.queue_purge)
+        self.__aenter__ = self._connection_guard(self.__aenter__)
+
+        super().__init__(
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=_no_packer,
+        )
 
     def _connection_guard(self, fn):
         @wraps(fn)
@@ -181,7 +195,8 @@ class Producer(AMQPMixin):
         if exchange_kwargs is None:
             exchange_kwargs = self._get_default_exchange_kwargs()
 
-        assert isinstance(payload, bytes)
+        if self.packer is not None:
+            payload = await self.packer.marshal(payload)
 
         await self._ensure(
             queue_name=queue_name,
@@ -225,6 +240,7 @@ class Producer(AMQPMixin):
         return self._disconnect()
 
     async def __aenter__(self):
+        await self.ok()
         return self
 
     async def __aexit__(self, *exc_info):

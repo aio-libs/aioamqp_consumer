@@ -37,7 +37,8 @@ Consumer/Producer usage
         queue_kwargs = {
             'durable': True,
         }
-        amqp_kwargs = {}  # https://aioamqp.readthedocs.io/en/latest/api.html#aioamqp.connect
+        # https://aioamqp.readthedocs.io/en/latest/api.html#aioamqp.connect
+        amqp_kwargs = {}
 
         async with Producer(amqp_url, amqp_kwargs=amqp_kwargs) as producer:
             for _ in range(5):
@@ -56,7 +57,8 @@ Consumer/Producer usage
         )
         await consumer.scale(20)  # scale up to 20 background coroutines
         await consumer.scale(5)  # downscale to 5 background coroutines
-        await consumer.join()  # wait for rabbitmq queue is empty and all local messages are processed
+        # wait for rabbitmq queue is empty and all local messages are processed
+        await consumer.join()
         consumer.close()
         await consumer.wait_closed()
 
@@ -86,13 +88,11 @@ RPC usage
     async def main():
         amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
 
-        server = RpcServer(amqp_url, method)
+        server = RpcServer(amqp_url, method=method)
 
         client = RpcClient(amqp_url)
 
-        fut = await client.call(method(payload))
-        # `method(payload)` will be executed, awaiting result is optional
-        ret = await fut
+        ret = await client.call(method(payload))
 
         assert ret == payload
 
@@ -104,6 +104,8 @@ RPC usage
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.close()
+
+For built-in json encoding/decoding, take a look on `aioamqp_consumer.JsonRpcMethod`
 
 Thanks
 ------

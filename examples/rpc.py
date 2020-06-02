@@ -14,13 +14,11 @@ async def method(payload):
 async def main():
     amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
 
-    server = RpcServer(amqp_url, method)
+    server = RpcServer(amqp_url, method=method)
 
     client = RpcClient(amqp_url)
 
-    fut = await client.call(method(payload))
-    # `method(payload)` will be executed, awaiting result is optional
-    ret = await fut
+    ret = await client.call(method(payload))
 
     assert ret == payload
 
