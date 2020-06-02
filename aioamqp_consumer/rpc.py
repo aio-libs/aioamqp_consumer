@@ -251,7 +251,6 @@ class RpcMethod:
         if packer is None:
             if packer_cls is not None:
                 packer = packer_cls()
-
             elif cls.default_packer_cls is not None:
                 packer = cls.default_packer_cls()
             else:
