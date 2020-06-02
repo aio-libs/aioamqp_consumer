@@ -31,6 +31,7 @@ setup(
     python_requires='>=3.6.0',
     install_requires=[
         'aioamqp>=0.14.0',
+        'aiorun>=2020.2.1',
         'async_timeout>=3.0.0',
     ],
     packages=['aioamqp_consumer'],

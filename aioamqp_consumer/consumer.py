@@ -7,6 +7,7 @@ import async_timeout
 from .exceptions import Ack, DeadLetter, Reject
 from .log import logger
 from .mixins import AMQPMixin
+from .serve import serve
 from .utils import unpartial
 
 
@@ -488,6 +489,10 @@ class Consumer(AMQPMixin):
         msg = 'Consumer (queue: %(queue)s) is closing'
         context = {'queue': self.queue_name}
         logger.debug(msg, context)
+
+    def serve(self, **kwargs):
+        kwargs.setdefault('loop', self.loop)
+        serve(self, **kwargs)
 
     async def wait_closed(self):
         assert self._closed, 'Must be closed first'
