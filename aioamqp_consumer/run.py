@@ -1,9 +1,9 @@
 import asyncio
 
-from aiorun import run
+from aiorun import run as _run
 
 
-def serve(*consumers, **kwargs):
+def run(*consumers, **kwargs):
     loop = kwargs.pop('loop', None)
 
     if loop is None:
@@ -19,4 +19,4 @@ def serve(*consumers, **kwargs):
     kwargs['shutdown_callback'] = shutdown_callback
     kwargs['loop'] = loop
 
-    run(**kwargs)
+    _run(**kwargs)

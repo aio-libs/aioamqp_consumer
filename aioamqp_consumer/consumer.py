@@ -8,7 +8,7 @@ from .amqp import AMQPMixin
 from .exceptions import Ack, DeadLetter, Reject
 from .log import logger
 from .packer import PackerMixin
-from .serve import serve
+from .run import run
 from .utils import unpartial
 
 
@@ -526,9 +526,9 @@ class Consumer(
         context = {'queue': self.queue_name}
         logger.debug(msg, context)
 
-    def serve(self, **kwargs):
+    def run(self, **kwargs):
         kwargs.setdefault('loop', self.loop)
-        serve(self, **kwargs)
+        run(self, **kwargs)
 
     async def wait_closed(self):
         assert self._closed, 'Must be closed first'
