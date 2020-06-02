@@ -1,16 +1,20 @@
 import asyncio
 import logging
 
-import aioamqp
 import async_timeout
+from aioamqp import AioamqpException
 
+from .amqp import AMQPMixin
 from .exceptions import Ack, DeadLetter, Reject
 from .log import logger
-from .mixins import AMQPMixin
+from .packer import PackerMixin
 from .utils import unpartial
 
 
-class Consumer(AMQPMixin):
+class Consumer(
+    PackerMixin,
+    AMQPMixin,
+):
 
     _consumer_tag = None
 
@@ -30,6 +34,9 @@ class Consumer(AMQPMixin):
         dead_letter_exceptions=tuple(),
         queue_kwargs=None,
         amqp_kwargs=None,
+        packer=None,
+        packer_cls=None,
+        _no_packer=False,
     ):
         if concurrency <= 0:
             raise NotImplementedError
@@ -72,6 +79,12 @@ class Consumer(AMQPMixin):
 
         if self.task_timeout is not None and not self._task_is_coro:
             raise NotImplementedError
+
+        super().__init__(
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=_no_packer,
+        )
 
         self.__monitor = self.loop.create_task(self._monitor())
 
@@ -139,7 +152,7 @@ class Consumer(AMQPMixin):
             msg = 'Worker (queue: %(queue)%) errored during removing'
             context = {'queue': self.queue_name}
             logger.exception(msg, context, exc_info=exc)
-        except aioamqp.AioamqpException as exc:
+        except AioamqpException as exc:
             msg = 'Worker (queue: %(queue)%) ' \
                   'faced connection problems during removing'
             context = {'queue': self.queue_name}
@@ -164,6 +177,9 @@ class Consumer(AMQPMixin):
     async def _run_task(self, payload, properties, delivery_tag):
         try:
             try:
+                if self.packer is not None:
+                    payload = await self.packer.unmarshal(payload)
+
                 _task = self._wrap(payload, properties)
             except self.reject_exceptions as exc:
                 raise Reject from exc
@@ -257,7 +273,7 @@ class Consumer(AMQPMixin):
             async with async_timeout.timeout(timeout):
                 await self._up.wait()
         except asyncio.TimeoutError as exc:
-            raise aioamqp.AioamqpException from exc
+            raise AioamqpException from exc
 
     async def scale(self, concurrency, wait_ok=True, timeout=None):
         if concurrency <= 0:
@@ -289,7 +305,7 @@ class Consumer(AMQPMixin):
                         prefetch_count=prefetch,
                         connection_global=True,
                     )
-                except aioamqp.AioamqpException as exc:
+                except AioamqpException as exc:
                     msg = 'Connection problem during consumer scale ' \
                           '(queue: %(queue)s). Not scaled. Scale will be ' \
                           'performed by monitor on next iteration'
@@ -331,7 +347,7 @@ class Consumer(AMQPMixin):
                         queue_name=self.queue_name,
                         **queue_kwargs,
                     )
-                except aioamqp.AioamqpException as exc:
+                except AioamqpException as exc:
                     msg = 'Connection error during join in consumer ' \
                           '(queue: %(queue)s).'
                     context = {'queue': self.queue_name}
@@ -366,7 +382,7 @@ class Consumer(AMQPMixin):
                 logger.debug(msg, context)
 
                 break
-            except aioamqp.AioamqpException as exc:
+            except AioamqpException as exc:
                 msg = 'Cannot connect to amqp. Reconnect in %(delay)s seconds'
                 context = {'delay': self.reconnect_delay}
                 logger.warning(msg, context, exc_info=exc)
@@ -379,7 +395,7 @@ class Consumer(AMQPMixin):
 
             try:
                 await self.scale(self._concurrency, wait_ok=False)
-            except aioamqp.AioamqpException:
+            except AioamqpException:
                 continue
 
             try:
@@ -389,7 +405,7 @@ class Consumer(AMQPMixin):
                     no_ack=False,
                     exclusive=self.exclusive,
                 )
-            except aioamqp.AioamqpException:
+            except AioamqpException:
                 continue
             else:
                 break
@@ -465,7 +481,7 @@ class Consumer(AMQPMixin):
                 if self._consumer_tag is not None:
                     try:
                         await self._basic_cancel(self._consumer_tag)
-                    except aioamqp.AioamqpException:
+                    except AioamqpException:
                         pass
 
                     msg = 'Consumer (queue: %(queue)s) stopped consuming'

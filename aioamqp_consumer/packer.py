@@ -130,3 +130,42 @@ class JsonPacker(Packer):
         obj = obj.decode('utf-8')
         obj = await self.loop.run_in_executor(self.executor, self._loads, obj)
         return obj
+
+
+class PackerMixin:
+
+    default_packer_cls = None
+
+    def __init__(self, *, packer, packer_cls, _no_packer):
+        self.packer = self.get_packer(
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=_no_packer,
+        )
+
+    @classmethod
+    def get_packer(
+        cls,
+        *,
+        packer,
+        packer_cls,
+        _no_packer,
+    ):
+        if _no_packer:
+            return
+
+        if packer and packer_cls:
+            raise NotImplementedError
+
+        if packer is None:
+            if packer_cls is not None:
+                packer = packer_cls()
+            elif cls.default_packer_cls is not None:
+                packer = cls.default_packer_cls()
+            else:
+                packer = settings.DEFAULT_PACKER_CLS()
+
+        return packer
+
+
+from . import settings  # noqa isort:skip
