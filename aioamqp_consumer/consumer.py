@@ -37,6 +37,7 @@ class Consumer(
         packer=None,
         packer_cls=None,
         _no_packer=False,
+        unmarshal_exc=None,
     ):
         if concurrency <= 0:
             raise NotImplementedError
@@ -85,6 +86,8 @@ class Consumer(
             packer_cls=packer_cls,
             _no_packer=_no_packer,
         )
+
+        self.unmarshal_exc = unmarshal_exc
 
         self.__monitor = self.loop.create_task(self._monitor())
 
@@ -178,7 +181,21 @@ class Consumer(
         try:
             try:
                 if self.packer is not None:
-                    payload = await self.packer.unmarshal(payload)
+                    try:
+                        payload = await self.packer.unmarshal(payload)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        self._log_task(
+                            'unmarshal error',
+                            logging.DEBUG,
+                            exc_info=exc,
+                        )
+
+                        if self.unmarshal_exc is None:
+                            raise
+
+                        raise self.unmarshal_exc from exc
 
                 _task = self._wrap(payload, properties)
             except self.reject_exceptions as exc:
@@ -201,7 +218,7 @@ class Consumer(
                 if not cm.expired:
                     raise
 
-                self._log_task('timeouted')
+                self._log_task('timeouted', exc_info=exc)
                 raise Reject from exc
         except Ack:
             pass
