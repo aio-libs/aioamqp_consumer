@@ -5,7 +5,7 @@ from functools import partial
 
 from . import settings
 from .consumer import Consumer
-from .exceptions import DeliveryError, RpcError
+from .exceptions import DeliveryError, Reject, RpcError
 from .log import logger
 from .producer import Producer
 from .utils import unpartial
@@ -233,6 +233,7 @@ class RpcMethod:
         exchange_kwargs,
         routing_key,
         packer,
+        auto_reject,
     ):
         self.method = method
         self.queue_name = queue_name
@@ -241,6 +242,7 @@ class RpcMethod:
         self.exchange_kwargs = exchange_kwargs
         self.routing_key = routing_key
         self.packer = packer
+        self.auto_reject = auto_reject
 
         _fn = unpartial(self.method)
         self._method_is_coro = asyncio.iscoroutinefunction(_fn)
@@ -258,6 +260,7 @@ class RpcMethod:
         routing_key='',
         packer=None,
         packer_cls=None,
+        auto_reject=False,
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
@@ -286,6 +289,7 @@ class RpcMethod:
                 exchange_kwargs=exchange_kwargs,
                 routing_key=routing_key,
                 packer=packer,
+                auto_reject=auto_reject,
             )
 
             return method
@@ -325,6 +329,9 @@ class RpcMethod:
             raise
         except Exception as exc:
             logger.warning(exc, exc_info=exc)
+
+            if self.auto_reject:
+                raise Reject from exc
 
             ret = RpcError(exc).dumps()
             _properties['content_type'] = RpcError.content_type

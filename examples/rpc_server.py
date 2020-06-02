@@ -6,9 +6,9 @@ amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
 
 
 @JsonRpcMethod.init(queue_name='random_queue')
-async def square(*args, **kwargs):
-    print(args, kwargs)
-    return kwargs['x'] ** 2
+async def square(*, x):
+    print(x)
+    return x ** 2
 
 
 if __name__ == '__main__':
