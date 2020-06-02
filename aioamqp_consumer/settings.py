@@ -1,3 +1,3 @@
 from .packer import RawPacker
 
-DEFAULT_PACKER = RawPacker
+DEFAULT_PACKER_CLS = RawPacker
