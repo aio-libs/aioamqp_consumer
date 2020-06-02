@@ -1,13 +1,19 @@
 import asyncio
 
-from aioamqp_consumer import RpcClient
+from rpc_server import amqp_url, square
 
-from rpc_server import square, amqp_url  # isort:skip
+from aioamqp_consumer import RpcClient
 
 
 async def main():
     async with RpcClient(amqp_url) as client:
         print(await client.call(square(x=2)))
+
+        coros = [
+            client.call(square(x=i))
+            for i in range(10)
+        ]
+        print(await asyncio.gather(*coros))
 
 
 if __name__ == '__main__':
