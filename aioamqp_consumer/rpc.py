@@ -208,6 +208,7 @@ class RpcMethod:
         routing_key,
         packer,
         auto_reject,
+        auto_reject_delay=None,
     ):
         self.method = method
         self.queue_name = queue_name
@@ -217,6 +218,7 @@ class RpcMethod:
         self.routing_key = routing_key
         self.packer = packer
         self.auto_reject = auto_reject
+        self.auto_reject_delay = auto_reject_delay
 
         _fn = unpartial(self.method)
         self._method_is_coro = asyncio.iscoroutinefunction(_fn)
@@ -311,6 +313,9 @@ class RpcMethod:
             logger.warning(exc, exc_info=exc)
 
             if self.auto_reject:
+                if self.auto_reject_delay is not None:
+                    await asyncio.sleep(self.auto_reject_delay)
+
                 raise Reject from exc
 
             payload = RpcError(exc).dumps()
