@@ -14,7 +14,7 @@ async def method(payload):
 async def main():
     amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
 
-    server = RpcServer(amqp_url, method)
+    server = RpcServer(amqp_url, method=method)
 
     client = RpcClient(amqp_url)
 

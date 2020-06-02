@@ -5,6 +5,10 @@ import json
 
 class Packer(abc.ABC):
 
+    ARGS = 'a'
+    KWARGS = 'k'
+    empty_payload = b''
+
     def __init__(self, *, executor=None):
         self.executor = executor
         self.loop = asyncio.get_event_loop()
@@ -13,6 +17,9 @@ class Packer(abc.ABC):
         self._unmarshall_is_coro = asyncio.iscoroutinefunction(self._unmarshall)
 
     async def marshall(self, obj):
+        if obj == self.empty_payload:
+            return self.empty_payload
+
         obj = self._marshall(obj)
 
         if self._marshall_is_coro:
@@ -42,6 +49,27 @@ class Packer(abc.ABC):
     async def _unmarshall(self, obj):
         pass
 
+    def pack(self, *args, **kwargs):
+        payload = {}
+
+        if args:
+            payload[self.ARGS] = args
+
+        if kwargs:
+            payload[self.KWARGS] = kwargs
+
+        if payload:
+            return payload
+
+        return self.empty_payload
+
+    def unpack(self, obj):
+        args = obj.get(self.ARGS, [])
+
+        kwargs = obj.get(self.KWARGS, {})
+
+        return args, kwargs
+
 
 class RawPacker(Packer):
 
@@ -54,6 +82,22 @@ class RawPacker(Packer):
 
     def _unmarshall(self, obj):
         return obj
+
+    def pack(self, *args, **kwargs):
+        if args:
+            return args[0]
+
+        return self.empty_payload
+
+    def unpack(self, obj):
+        args = []
+
+        if obj != self.empty_payload:
+            args.append(obj)
+
+        kwargs = {}
+
+        return args, kwargs
 
 
 class JsonPacker(Packer):

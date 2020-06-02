@@ -13,9 +13,6 @@ from .utils import unpartial
 
 class RpcCall:
 
-    ARGS = 'a'
-    KWARGS = 'k'
-
     def __init__(
         self,
         payload,
@@ -43,9 +40,6 @@ class RpcCall:
         return self.packer.content_type
 
     async def request(self):
-        if self.payload == self.empty_payload:
-            return self.empty_payload
-
         return await self.packer.marshall(self.payload)
 
     async def response(self, fut):
@@ -55,31 +49,6 @@ class RpcCall:
         payload = await shield
 
         return await self.packer.unmarshall(payload)
-
-    empty_payload = b''
-
-    @classmethod
-    def marshall(cls, *args, **kwargs):
-        payload = {}
-
-        if args:
-            payload[cls.ARGS] = args
-
-        if kwargs:
-            payload[cls.KWARGS] = kwargs
-
-        if payload:
-            return payload
-
-        return cls.empty_payload
-
-    @classmethod
-    def unmarshall(cls, obj):
-        args = obj.get(cls.ARGS, [])
-
-        kwargs = obj.get(cls.KWARGS, {})
-
-        return args, kwargs
 
 
 class RpcClient(Consumer):
@@ -297,7 +266,7 @@ class RpcMethod:
         return wrapper
 
     def __call__(self, *args, **kwargs):
-        payload = RpcCall.marshall(*args, **kwargs)
+        payload = self.packer.pack(*args, **kwargs)
 
         return RpcCall(
             payload=payload,
@@ -317,7 +286,7 @@ class RpcMethod:
         try:
             obj = await self.packer.unmarshall(payload)
 
-            args, kwargs = RpcCall.unmarshall(obj)
+            args, kwargs = self.packer.unpack(obj)
 
             ret = self.method(*args, **kwargs)
 
