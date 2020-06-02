@@ -132,22 +132,40 @@ class JsonPacker(Packer):
         return obj
 
 
-def get_packer(cls, *, packer, packer_cls, _no_packer):
-    if _no_packer:
-        return
+class PackerMixin:
 
-    if packer and packer_cls:
-        raise NotImplementedError
+    default_packer_cls = None
 
-    if packer is None:
-        if packer_cls is not None:
-            packer = packer_cls()
-        elif cls.default_packer_cls is not None:
-            packer = cls.default_packer_cls()
-        else:
-            packer = settings.DEFAULT_PACKER_CLS()
+    def __init__(self, *, packer, packer_cls, _no_packer):
+        self.packer = self.get_packer(
+            packer=packer,
+            packer_cls=packer_cls,
+            _no_packer=_no_packer,
+        )
 
-    return packer
+    @classmethod
+    def get_packer(
+        cls,
+        *,
+        packer,
+        packer_cls,
+        _no_packer,
+    ):
+        if _no_packer:
+            return
+
+        if packer and packer_cls:
+            raise NotImplementedError
+
+        if packer is None:
+            if packer_cls is not None:
+                packer = packer_cls()
+            elif cls.default_packer_cls is not None:
+                packer = cls.default_packer_cls()
+            else:
+                packer = settings.DEFAULT_PACKER_CLS()
+
+        return packer
 
 
 from . import settings  # noqa isort:skip
