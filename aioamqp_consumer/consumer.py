@@ -67,6 +67,11 @@ class Consumer(AMQPMixin):
         self._up = asyncio.Event()
         self._queue_info = None
 
+        self._task_is_coro = asyncio.iscoroutinefunction(unpartial(self.task))
+
+        if self.task_timeout is not None and not self._task_is_coro:
+            raise NotImplementedError
+
         self.__monitor = self.loop.create_task(self._monitor())
 
     async def _get_concurrency(self):
@@ -164,10 +169,7 @@ class Consumer(AMQPMixin):
             except self.dead_letter_exceptions as exc:
                 raise DeadLetter from exc
 
-            if not asyncio.iscoroutinefunction(unpartial(self.task)):
-                if self.task_timeout is not None:
-                    raise NotImplementedError
-
+            if not self._task_is_coro:
                 raise Ack
 
             try:
