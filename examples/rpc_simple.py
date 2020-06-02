@@ -7,10 +7,10 @@ from aioamqp_consumer import RpcClient
 
 async def main():
     async with RpcClient(amqp_url) as client:
-        print(await client.call(square(x=2)))
+        print(await client.wait(square(x=2)))
 
         coros = [
-            client.call(square(x=i))
+            client.wait(square(x=i))
             for i in range(10)
         ]
         print(await asyncio.gather(*coros))

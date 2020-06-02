@@ -18,7 +18,7 @@ async def test_rpc_smoke(amqp_queue_name, amqp_url):
 
     client = RpcClient(amqp_url)
 
-    test_result = await client.call(test_method(test_data))
+    test_result = await client.wait(test_method(test_data))
 
     assert test_result == test_data
 
@@ -37,7 +37,7 @@ async def test_json_rpc_smoke(amqp_queue_name, amqp_url):
 
     client = RpcClient(amqp_url)
 
-    test_result = await client.call(square_method(x=2))
+    test_result = await client.wait(square_method(x=2))
 
     assert test_result == 4
 
@@ -58,7 +58,7 @@ async def test_rpc_no_payload(amqp_queue_name, amqp_url):
 
     client = RpcClient(amqp_url)
 
-    test_result = await client.call(test_method())
+    test_result = await client.wait(test_method())
 
     assert test_result == test_data
 
@@ -79,7 +79,7 @@ async def test_rpc_no_wait(amqp_queue_name, amqp_url):
 
     client = RpcClient(amqp_url)
 
-    await client.call(test_method(), wait=False)
+    await client.wait(test_method(), wait=False)
 
     assert not client._map
 
@@ -105,7 +105,7 @@ async def test_rpc_remote_init(amqp_queue_name, amqp_url):
 
     remote_test_method = RpcMethod.remote_init(amqp_queue_name)
 
-    test_result = await client.call(remote_test_method(test_data))
+    test_result = await client.wait(remote_test_method(test_data))
 
     assert test_result == test_data
 

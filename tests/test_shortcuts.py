@@ -17,7 +17,7 @@ async def test_shortcuts(amqp_queue_name, amqp_url):
 
     remote_test_method = json_rpc.remote(amqp_queue_name)
 
-    test_result = await client.call(remote_test_method(test_data))
+    test_result = await client.wait(remote_test_method(test_data))
 
     assert test_result == test_data
 
