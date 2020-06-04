@@ -77,9 +77,15 @@ class RawPacker(Packer):
         return 'application/octet-stream'
 
     def _marshal(self, obj):
+        if obj is None:
+            return self.empty_payload
+
         return obj
 
     def _unmarshal(self, obj):
+        if obj == self.empty_payload:
+            return None
+
         return obj
 
     def pack(self, *args, **kwargs):
@@ -97,7 +103,7 @@ class RawPacker(Packer):
     def unpack(self, obj):
         args = []
 
-        if obj != self.empty_payload:
+        if obj is not None:
             args.append(obj)
 
         kwargs = {}

@@ -32,8 +32,16 @@ class RpcError(Exception):
     def dumps(self):
         try:
             return self._dumps(self.err)
-        except (pickle.PickleError, NotImplementedError) as exc:
+        except (
+            NotImplementedError,
+            AttributeError,
+            pickle.PickleError,
+        ) as exc:
             logger.warning(exc, exc_info=exc)
+
+            return self._dumps(exc)
+        except BaseException as exc:
+            logger.critical(exc, exc_info=exc)
 
             return self._dumps(exc)
 

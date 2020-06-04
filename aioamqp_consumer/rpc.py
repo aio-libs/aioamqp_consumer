@@ -14,6 +14,26 @@ from .producer import Producer
 from .utils import unpartial
 
 
+class RpcResponse:
+
+    def __init__(self, fut, *, packer, timeout):
+        self.fut = fut
+        self.packer = packer
+        self.timeout = timeout
+
+    def __await__(self):
+        return self.response().__await__()
+
+    async def response(self):
+        shield = asyncio.shield(self.fut)
+        shield._log_traceback = False
+
+        async with async_timeout.timeout(timeout=self.timeout):
+            payload = await shield
+
+        return await self.packer.unmarshal(payload)
+
+
 class RpcCall:
 
     def __init__(
@@ -50,14 +70,8 @@ class RpcCall:
 
         return await self.packer.marshal(payload)
 
-    async def response(self, fut, *, timeout):
-        shield = asyncio.shield(fut)
-        shield._log_traceback = False
-
-        async with async_timeout.timeout(timeout=timeout):
-            payload = await shield
-
-        return await self.packer.unmarshal(payload)
+    def response(self, fut, *, timeout):
+        return RpcResponse(fut, packer=self.packer, timeout=timeout)
 
 
 class RpcClient(Consumer):
@@ -145,7 +159,14 @@ class RpcClient(Consumer):
             routing_key=method.routing_key,
         )
 
-    async def call(self, rpc_call, *, wait=False, timeout=None):
+    async def call(
+        self,
+        rpc_call,
+        *,
+        wait=False,
+        wait_response=True,
+        timeout=None,
+    ):
         payload = await rpc_call.request()
 
         await self.ok()
@@ -187,7 +208,12 @@ class RpcClient(Consumer):
             raise
 
         if wait:
-            return await rpc_call.response(fut, timeout=timeout)
+            response = rpc_call.response(fut, timeout=timeout)
+
+            if wait_response:
+                response = await response
+
+            return response
 
     wait = partialmethod(call, wait=True)
 
