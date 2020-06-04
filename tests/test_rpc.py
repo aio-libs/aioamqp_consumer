@@ -191,3 +191,38 @@ async def test_rpc_error(rpc_client_close, rpc_server_close, amqp_queue_name):
 
     # Can't pickle local object
     assert isinstance(exc_info.value.err, AttributeError)
+
+
+@pytest.mark.asyncio
+async def test_rpc_marshal_exc(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method():
+        pass
+
+    calls = 0
+
+    async def _unmarshal(obj):
+        nonlocal calls
+        calls += 1
+        raise ValueError
+
+    test_method.packer.unmarshal = _unmarshal
+
+    await rpc_server_close(
+        test_method,
+        amqp_queue_name,
+        marshal_exc=ZeroDivisionError,
+    )
+
+    client = await rpc_client_close()
+
+    with pytest.raises(RpcError) as exc_info:
+        await client.wait(test_method())
+
+    assert isinstance(exc_info.value.err, ZeroDivisionError)
+
+    assert calls == 1
