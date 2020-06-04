@@ -83,6 +83,9 @@ class AMQPMixin:
     async def _queue_bind(self, *args, **kwargs):
         return await self._channel.queue_bind(*args, **kwargs)
 
+    async def _queue_delete(self, *args, **kwargs):
+        return await self._channel.queue_delete(*args, **kwargs)
+
     async def _queue_purge(self, *args, **kwargs):
         return await self._channel.queue_purge(*args, **kwargs)
 

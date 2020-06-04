@@ -52,7 +52,7 @@ class Producer(
         @wraps(fn)
         async def wrapper(*args, **kwargs):
             try:
-                await self._connect()
+                await self.ok()
 
                 return await fn(*args, **kwargs)
             # TODO: check OSError/dns/etc to disconnect
@@ -175,6 +175,9 @@ class Producer(
             routing_key=routing_key if routing_key else queue_name,
         )
 
+    async def queue_delete(self, queue_name):
+        return await self._queue_delete(queue_name=queue_name)
+
     async def publish(
         self,
         payload,
@@ -226,6 +229,8 @@ class Producer(
             if not self._connected:
                 await super()._connect(self.amqp_url, **self.amqp_kwargs)
 
+    ok = _connect
+
     async def _disconnect(self):
         self._init_known()
 
@@ -240,7 +245,7 @@ class Producer(
         return self._disconnect()
 
     async def __aenter__(self):
-        await self._connect()
+        await self.ok()
         return self
 
     async def __aexit__(self, *exc_info):

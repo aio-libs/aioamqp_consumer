@@ -7,10 +7,10 @@ import uuid
 
 import pytest
 
-from aioamqp_consumer import Producer
+from aioamqp_consumer import Consumer, Producer
 
-HOST = 'localhost'
-PORT = 5672
+RABBITMQ_HOST = os.environ.get('RABBITMQ_HOST', 'localhost')
+RABBITMQ_PORT = int(os.environ.get('RABBITMQ_PORT', '5672'))
 
 
 @pytest.fixture
@@ -39,12 +39,12 @@ def loop(event_loop):
 
 
 def probe():
-    delay = 1.0
+    delay = 0.1
 
     for i in range(20):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            s.connect((HOST, PORT))
+            s.connect((RABBITMQ_HOST, RABBITMQ_PORT))
             break
         except OSError:
             time.sleep(delay)
@@ -61,21 +61,77 @@ def amqp_url():
     return 'amqp://{}:{}@{}:{}//'.format(
         'guest',
         'guest',
-        HOST,
-        PORT,
+        RABBITMQ_HOST,
+        RABBITMQ_PORT,
     )
 
 
 @pytest.fixture
-def amqp_queue_name():
-    return str(uuid.uuid1())
-
-
-@pytest.fixture
-def producer(amqp_url, loop):
+async def producer(amqp_url):
     producer = Producer(amqp_url)
+
+    await producer.ok()
 
     yield producer
 
     producer.close()
-    loop.run_until_complete(producer.wait_closed())
+    await producer.wait_closed()
+
+
+@pytest.fixture
+def consumer_factory(amqp_url):
+    async def wrapper(task, amqp_queue_name):
+        consumer = Consumer(
+            amqp_url,
+            task,
+            amqp_queue_name,
+        )
+
+        await consumer.ok()
+
+        return consumer
+
+    return wrapper
+
+
+@pytest.fixture
+def consumer_close(consumer_factory, loop):
+    consumers = []
+
+    async def wrapper(task, amqp_queue_name):
+        consumer = await consumer_factory(task, amqp_queue_name)
+
+        consumers.append(consumer)
+
+        return consumer
+
+    yield wrapper
+
+    async def close(consumer):
+        consumer.close()
+        await consumer.wait_closed()
+
+    coros = [close(consumer) for consumer in consumers]
+
+    loop.run_until_complete(asyncio.gather(*coros))
+
+
+@pytest.fixture
+def consumer_join(consumer_close):
+    async def wrapper(task, amqp_queue_name):
+        consumer = await consumer_close(task, amqp_queue_name)
+
+        await consumer.join()
+
+        return consumer
+
+    return wrapper
+
+
+@pytest.fixture
+async def amqp_queue_name(producer):
+    queue = str(uuid.uuid1())
+
+    yield queue
+
+    await producer.queue_delete(queue)

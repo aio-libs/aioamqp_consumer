@@ -542,6 +542,7 @@ class Consumer(
         logger.debug(msg, context)
 
     async def __aenter__(self):
+        await self.ok()
         return self
 
     async def __aexit__(self, *exc_info):

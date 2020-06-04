@@ -14,6 +14,7 @@ class Packer(abc.ABC):
         self._unmarshal_is_coro = asyncio.iscoroutinefunction(self._unmarshal)
 
     async def marshal(self, obj):
+        # TODO: > 1MB logger.warning
         if obj == self.empty_payload:
             return self.empty_payload
 
