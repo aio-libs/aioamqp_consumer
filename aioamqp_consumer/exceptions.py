@@ -1,6 +1,14 @@
 import pickle
+import traceback
 
 from .log import logger
+
+PICKLE_ERRORS = (
+    NotImplementedError,
+    AttributeError,
+    TypeError,
+    pickle.PickleError,
+)
 
 
 class DeliveryError(Exception):
@@ -21,7 +29,7 @@ class DeadLetter(DeliveryError):
 
 class RpcError(Exception):
 
-    content_type = 'application/python-pickle'
+    content_type = 'application/python-pickle;exception'
 
     def __init__(self, err):
         self.err = err
@@ -32,12 +40,7 @@ class RpcError(Exception):
     def dumps(self):
         try:
             return self._dumps(self.err)
-        except (
-            NotImplementedError,
-            AttributeError,
-            TypeError,
-            pickle.PickleError,
-        ) as exc:
+        except PICKLE_ERRORS as exc:
             logger.warning(exc, exc_info=exc)
 
             return self._dumps(exc)
@@ -49,13 +52,23 @@ class RpcError(Exception):
             except BaseException as exc:
                 logger.critical(exc, exc_info=exc)
 
-                return self._dumps(pickle.PickleError())
+                exc_tb = traceback.format_exception(
+                    etype=type(exc),
+                    value=exc,
+                    tb=exc.__traceback__,
+                )
+
+                return self._dumps(pickle.PickleError(''.join(exc_tb)))
 
     @classmethod
     def loads(cls, pkl):
         try:
             return cls(pickle.loads(pkl))
-        except pickle.PickleError as exc:
+        except PICKLE_ERRORS as exc:
             logger.warning(exc, exc_info=exc)
+
+            return cls(exc)
+        except BaseException as exc:
+            logger.critical(exc, exc_info=exc)
 
             return cls(exc)
