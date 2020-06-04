@@ -159,7 +159,7 @@ async def test_rpc_wait_response(
     response = await client.wait(
         test_method(),
         timeout=0.1,
-        return_response=True,
+        wait_response=False,
     )
 
     with pytest.raises(asyncio.TimeoutError):

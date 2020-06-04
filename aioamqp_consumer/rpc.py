@@ -164,10 +164,10 @@ class RpcClient(Consumer):
         rpc_call,
         *,
         wait=False,
-        return_response=False,
+        wait_response=False,
         timeout=None,
     ):
-        if return_response and not wait:
+        if not wait and wait_response:
             raise NotImplementedError
 
         payload = await rpc_call.request()
@@ -213,12 +213,12 @@ class RpcClient(Consumer):
         if wait:
             response = rpc_call.response(fut, timeout=timeout)
 
-            if not return_response:
+            if wait_response:
                 response = await response
 
             return response
 
-    wait = partialmethod(call, wait=True)
+    wait = partialmethod(call, wait=True, wait_response=True)
 
     def close(self):
         super().close()
