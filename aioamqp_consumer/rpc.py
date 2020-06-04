@@ -164,9 +164,12 @@ class RpcClient(Consumer):
         rpc_call,
         *,
         wait=False,
-        wait_response=True,
+        return_response=False,
         timeout=None,
     ):
+        if return_response and not wait:
+            raise NotImplementedError
+
         payload = await rpc_call.request()
 
         await self.ok()
@@ -210,7 +213,7 @@ class RpcClient(Consumer):
         if wait:
             response = rpc_call.response(fut, timeout=timeout)
 
-            if wait_response:
+            if not return_response:
                 response = await response
 
             return response
