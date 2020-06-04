@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from async_timeout import timeout
 
-from aioamqp_consumer import JsonRpcMethod, RpcMethod, RpcError
+from aioamqp_consumer import JsonRpcMethod, RpcError, RpcMethod
 
 
 @pytest.mark.asyncio
