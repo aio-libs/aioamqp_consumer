@@ -1,11 +1,11 @@
 import asyncio
 
-from aioamqp_consumer import RpcClient, RpcMethod, RpcServer
+from aioamqp_consumer import RpcClient, RpcServer, rpc
 
 payload = b'test'
 
 
-@RpcMethod.init(queue_name='random_queue')
+@rpc(queue_name='random_queue')
 async def method(payload):
     print(payload)
     return payload

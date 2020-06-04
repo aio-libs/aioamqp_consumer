@@ -74,12 +74,12 @@ RPC usage
 
     import asyncio
 
-    from aioamqp_consumer import RpcClient, RpcMethod, RpcServer
+    from aioamqp_consumer import RpcClient, RpcServer, rpc
 
     payload = b'test'
 
 
-    @RpcMethod.init(queue_name='random_queue')
+    @rpc(queue_name='random_queue')
     async def method(payload):
         print(payload)
         return payload
@@ -105,7 +105,27 @@ RPC usage
     loop.run_until_complete(main())
     loop.close()
 
-For built-in json encoding/decoding, take a look on `aioamqp_consumer.JsonRpcMethod`
+For built-in json encoding/decoding, take a look on `aioamqp_consumer.json_rpc`
+
+For production deploying `aioamqp_consumer.Consumer`/`aioamqp_consumer.RpcServer` there is built-in simpler runner:
+
+.. code-block:: python
+
+    from aioamqp_consumer import RpcServer, json_rpc
+
+    amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
+
+
+    @json_rpc(queue_name='random_queue')
+    async def square(*, x):
+        ret = x ** 2
+
+        print(x, ret)
+
+        return ret
+
+    if __name__ == '__main__':
+        RpcServer(amqp_url, method=square).run()
 
 Thanks
 ------
