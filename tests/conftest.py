@@ -1,5 +1,4 @@
 import asyncio
-import atexit
 import gc
 import os
 import socket
@@ -7,18 +6,11 @@ import time
 import uuid
 
 import pytest
-from docker import from_env as docker_from_env
 
-from aioamqp_consumer import Producer
+from aioamqp_consumer import Consumer, Producer, RpcClient, RpcServer
 
-asyncio.set_event_loop(None)
-
-
-def unused_port():
-    """Return a port that is unused on the current host."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('127.0.0.1', 0))
-        return s.getsockname()[1]
+RABBITMQ_HOST = os.environ.get('RABBITMQ_HOST', 'localhost')
+RABBITMQ_PORT = int(os.environ.get('RABBITMQ_PORT', '5672'))
 
 
 @pytest.fixture
@@ -30,6 +22,9 @@ def event_loop(request):
 
     loop.call_soon(loop.stop)
     loop.run_forever()
+
+    loop.run_until_complete(loop.shutdown_asyncgens())
+    loop._default_executor.shutdown(wait=True)
     loop.close()
 
     gc.collect()
@@ -40,112 +35,175 @@ def loop(event_loop):
     return event_loop
 
 
-@pytest.fixture(scope='session')
-def session_id():
-    '''Unique session identifier, random string.'''
-    return str(uuid.uuid4())
+def probe():
+    delay = 0.1
 
-
-@pytest.fixture(scope='session')
-def docker():
-    client = docker_from_env(version='auto')
-    return client
-
-
-def pytest_collection_modifyitems(items):
-    for item in items:
-        if asyncio.iscoroutinefunction(item.function):
-            item.add_marker(pytest.mark.asyncio)
-
-
-def pytest_addoption(parser):
-    parser.addoption("--rabbit_tag", action="append", default=[],
-                     help=("Rabbitmq server versions. "
-                           "May be used several times. "
-                           "3.6.11-alpine by default"))
-    parser.addoption("--local-docker", action="store_true", default=False,
-                     help="Use 0.0.0.0 as docker host, useful for MacOs X")
-
-
-def pytest_generate_tests(metafunc):
-    if 'rabbit_tag' in metafunc.fixturenames:
-        tags = set(metafunc.config.option.rabbit_tag)
-        if not tags:
-            tags = ['3.6.11-alpine']
-        else:
-            tags = list(tags)
-        metafunc.parametrize("rabbit_tag", tags, scope='session')
-
-
-def probe(container):
-    delay = 0.001
     for i in range(20):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            s.connect((container['host'], container['port']))
+            s.connect((RABBITMQ_HOST, RABBITMQ_PORT))
             break
         except OSError:
             time.sleep(delay)
-            delay = min(delay*2, 1)
         finally:
             s.close()
     else:
-        pytest.fail("Cannot start rabbitmq server")
+        pytest.fail('Cannot reach rabbitmq server')
 
 
 @pytest.fixture(scope='session')
-def rabbit_container(docker, session_id, rabbit_tag, request):
-    image = 'rabbitmq:{}'.format(rabbit_tag)
+def amqp_url():
+    probe()
 
-    if request.config.option.local_docker:
-        rabbit_port = unused_port()
-    else:
-        rabbit_port = None
-
-    container = docker.containers.run(
-        image, detach=True,
-        name='rabbitmq-'+session_id,
-        ports={'5672/tcp': rabbit_port})
-
-    def defer():
-        container.kill(signal=9)
-        container.remove(force=True)
-
-    atexit.register(defer)
-
-    if request.config.option.local_docker:
-        host = '0.0.0.0'
-    else:
-        inspection = docker.api.inspect_container(container.id)
-        host = inspection['NetworkSettings']['IPAddress']
-
-    ret = {'container': container,
-           'host': host,
-           'port': 5672,
-           'login': 'guest',
-           'password': 'guest'}
-    probe(ret)
-    yield ret
+    return 'amqp://{}:{}@{}:{}//'.format(
+        'guest',
+        'guest',
+        RABBITMQ_HOST,
+        RABBITMQ_PORT,
+    )
 
 
 @pytest.fixture
-def amqp_url(rabbit_container):
-    return 'amqp://{}:{}@{}:{}//'.format(rabbit_container['login'],
-                                         rabbit_container['password'],
-                                         rabbit_container['host'],
-                                         rabbit_container['port'])
+async def producer(amqp_url):
+    producer = Producer(amqp_url)
 
-
-@pytest.fixture
-def amqp_queue_name():
-    return 'test'
-
-
-@pytest.fixture
-def producer(loop, amqp_url, amqp_queue_name):
-    producer = Producer(amqp_url, loop=loop)
+    await producer.ok()
 
     yield producer
 
     producer.close()
-    loop.run_until_complete(producer.wait_closed())
+    await producer.wait_closed()
+
+
+@pytest.fixture
+def consumer_factory(amqp_url):
+    async def wrapper(task, amqp_queue_name):
+        consumer = Consumer(
+            amqp_url,
+            task,
+            amqp_queue_name,
+        )
+
+        await consumer.ok()
+
+        return consumer
+
+    return wrapper
+
+
+@pytest.fixture
+def consumer_close(consumer_factory, loop):
+    consumers = []
+
+    async def wrapper(task, amqp_queue_name):
+        consumer = await consumer_factory(task, amqp_queue_name)
+
+        consumers.append(consumer)
+
+        return consumer
+
+    yield wrapper
+
+    async def close(consumer):
+        consumer.close()
+        await consumer.wait_closed()
+
+    coros = [close(consumer) for consumer in consumers]
+
+    loop.run_until_complete(asyncio.gather(*coros))
+
+
+@pytest.fixture
+def consumer_join(consumer_close):
+    async def wrapper(task, amqp_queue_name):
+        consumer = await consumer_close(task, amqp_queue_name)
+
+        await consumer.join()
+
+        return consumer
+
+    return wrapper
+
+
+@pytest.fixture
+async def amqp_queue_name(producer):
+    queue = str(uuid.uuid1())
+
+    yield queue
+
+    await producer.queue_delete(queue)
+
+
+@pytest.fixture
+def rpc_server_factory(amqp_url):
+    async def wrapper(method):
+        server = RpcServer(
+            amqp_url,
+            method=method,
+        )
+
+        await server.ok()
+
+        return server
+
+    return wrapper
+
+
+@pytest.fixture
+def rpc_server_close(rpc_server_factory, loop):
+    servers = []
+
+    async def wrapper(method, amqp_queue_name):
+        server = await rpc_server_factory(method)
+
+        servers.append(server)
+
+        return server
+
+    yield wrapper
+
+    coros = [server.stop() for server in servers]
+
+    loop.run_until_complete(asyncio.gather(*coros))
+
+
+@pytest.fixture
+def rpc_server_join(rpc_server_close):
+    async def wrapper(task, amqp_queue_name):
+        server = await rpc_server_close(task, amqp_queue_name)
+
+        await server.join()
+
+        return server
+
+    return wrapper
+
+
+@pytest.fixture
+def rpc_client_factory(amqp_url):
+    async def wrapper():
+        client = RpcClient(amqp_url)
+
+        await client.ok()
+
+        return client
+
+    return wrapper
+
+
+@pytest.fixture
+def rpc_client_close(rpc_client_factory, loop):
+    clients = []
+
+    async def wrapper():
+        client = await rpc_client_factory()
+
+        clients.append(client)
+
+        return client
+
+    yield wrapper
+
+    coros = [client.close() for client in clients]
+
+    loop.run_until_complete(asyncio.gather(*coros))

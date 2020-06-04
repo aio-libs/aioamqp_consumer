@@ -1,4 +1,4 @@
-import aioamqp
+from aioamqp import AioamqpException, from_url
 
 from .log import logger
 
@@ -36,15 +36,14 @@ class AMQPMixin:
             on_error = self._on_error_callback
 
         kwargs['on_error'] = on_error
-        kwargs['loop'] = self.loop
 
         try:
-            self._transport, self._protocol = await aioamqp.from_url(
+            self._transport, self._protocol = await from_url(
                 url,
-                **kwargs
+                **kwargs,
             )
         except OSError as exc:
-            raise aioamqp.AioamqpException from exc
+            raise AioamqpException from exc
 
         self._channel = await self._protocol.channel()
 
@@ -61,7 +60,7 @@ class AMQPMixin:
 
                     msg = 'Amqp channel is closed'
                     logger.debug(msg)
-                except aioamqp.AioamqpException:
+                except AioamqpException:
                     pass
 
             try:
@@ -71,7 +70,7 @@ class AMQPMixin:
 
                 msg = 'Amqp protocol and transport are closed'
                 logger.debug(msg)
-            except (aioamqp.AioamqpException, AttributeError):
+            except (AioamqpException, AttributeError):
                 # AttributeError tmp hotfix
                 pass
 
@@ -83,6 +82,9 @@ class AMQPMixin:
 
     async def _queue_bind(self, *args, **kwargs):
         return await self._channel.queue_bind(*args, **kwargs)
+
+    async def _queue_delete(self, *args, **kwargs):
+        return await self._channel.queue_delete(*args, **kwargs)
 
     async def _queue_purge(self, *args, **kwargs):
         return await self._channel.queue_purge(*args, **kwargs)

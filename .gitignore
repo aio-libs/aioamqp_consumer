@@ -19,6 +19,7 @@ htmlcov
 *.DS_Store
 *.swp
 *.out
+*.sublime-*
 
 .tox/
 deps/

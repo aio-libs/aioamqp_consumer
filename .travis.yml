@@ -1,12 +1,21 @@
-dist: trusty
+dist: xenial
+
 language: python
-sudo: true
-services:
-  - rabbitmq
+
+sudo: false
+
+addons:
+  apt:
+    packages:
+      - rabbitmq-server
 
 python:
-  - "3.5"
   - "3.6"
+  - "3.7"
+  - "3.8"
+
+env:
+  - PYTHONASYNCIODEBUG=1
 
 install:
   - pip install -U setuptools
