@@ -1,14 +1,8 @@
 import pickle
 import traceback
 
+from . import settings
 from .log import logger
-
-PICKLE_ERRORS = (
-    NotImplementedError,
-    AttributeError,
-    TypeError,
-    pickle.PickleError,
-)
 
 
 class DeliveryError(Exception):
@@ -40,7 +34,7 @@ class RpcError(Exception):
     def dumps(self):
         try:
             return self._dumps(self.err)
-        except PICKLE_ERRORS as exc:
+        except settings.PICKLE_ERRORS as exc:
             logger.warning(exc, exc_info=exc)
 
             return self._dumps(exc)
@@ -64,7 +58,7 @@ class RpcError(Exception):
     def loads(cls, pkl):
         try:
             return cls(pickle.loads(pkl))
-        except PICKLE_ERRORS as exc:
+        except settings.PICKLE_ERRORS as exc:
             logger.warning(exc, exc_info=exc)
 
             return cls(exc)

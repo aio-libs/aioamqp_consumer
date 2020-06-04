@@ -2,6 +2,9 @@ import abc
 import asyncio
 import json
 
+from . import settings
+from .log import logger
+
 
 class Packer(abc.ABC):
 
@@ -14,7 +17,6 @@ class Packer(abc.ABC):
         self._unmarshal_is_coro = asyncio.iscoroutinefunction(self._unmarshal)
 
     async def marshal(self, obj):
-        # TODO: > 1MB logger.warning
         if obj == self.empty_payload:
             return self.empty_payload
 
@@ -25,6 +27,13 @@ class Packer(abc.ABC):
 
         if not isinstance(obj, bytes):
             raise NotImplementedError
+
+        size = len(obj)
+
+        if size >= settings.PAYLOAD_LOG_SIZE:
+            msg = 'Packer.marshal returned more %(size)i'
+            context = {'size': size}
+            logger.warning(msg, context)
 
         return obj
 
