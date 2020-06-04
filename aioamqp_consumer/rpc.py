@@ -3,6 +3,7 @@ import uuid
 from collections import defaultdict
 from functools import partial, partialmethod
 
+import async_timeout
 from aioamqp import AioamqpException
 
 from .consumer import Consumer
@@ -49,11 +50,12 @@ class RpcCall:
 
         return await self.packer.marshal(payload)
 
-    async def response(self, fut):
+    async def response(self, fut, *, timeout):
         shield = asyncio.shield(fut)
         shield._log_traceback = False
 
-        payload = await shield
+        async with async_timeout.timeout(timeout=timeout):
+            payload = await shield
 
         return await self.packer.unmarshal(payload)
 
@@ -143,7 +145,7 @@ class RpcClient(Consumer):
             routing_key=method.routing_key,
         )
 
-    async def call(self, rpc_call, *, wait=False):
+    async def call(self, rpc_call, *, wait=False, timeout=None):
         payload = await rpc_call.request()
 
         await self.ok()
@@ -185,7 +187,7 @@ class RpcClient(Consumer):
             raise
 
         if wait:
-            return await rpc_call.response(fut)
+            return await rpc_call.response(fut, timeout=timeout)
 
     wait = partialmethod(call, wait=True)
 
@@ -365,4 +367,5 @@ class RpcServer(Consumer):
 
     def stop(self):
         self.close()
+
         return self.wait_closed()
