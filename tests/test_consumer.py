@@ -4,7 +4,7 @@ from aioamqp_consumer import JsonPacker
 
 
 @pytest.mark.asyncio
-async def test_consumer_smoke(amqp_queue_name, consumer_join, producer):
+async def test_consumer(amqp_queue_name, consumer_join, producer):
     test_data = [b'x'] * 5
 
     for data in test_data:

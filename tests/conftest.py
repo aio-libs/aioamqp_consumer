@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 
-from aioamqp_consumer import Consumer, Producer
+from aioamqp_consumer import Consumer, Producer, RpcClient, RpcServer
 
 RABBITMQ_HOST = os.environ.get('RABBITMQ_HOST', 'localhost')
 RABBITMQ_PORT = int(os.environ.get('RABBITMQ_PORT', '5672'))
@@ -135,3 +135,78 @@ async def amqp_queue_name(producer):
     yield queue
 
     await producer.queue_delete(queue)
+
+
+@pytest.fixture
+def rpc_server_factory(amqp_url):
+    async def wrapper(method):
+        server = RpcServer(
+            amqp_url,
+            method=method,
+        )
+
+        await server.ok()
+
+        return server
+
+    return wrapper
+
+
+@pytest.fixture
+def rpc_server_close(rpc_server_factory, loop):
+    servers = []
+
+    async def wrapper(method, amqp_queue_name):
+        server = await rpc_server_factory(method)
+
+        servers.append(server)
+
+        return server
+
+    yield wrapper
+
+    coros = [server.stop() for server in servers]
+
+    loop.run_until_complete(asyncio.gather(*coros))
+
+
+@pytest.fixture
+def rpc_server_join(rpc_server_close):
+    async def wrapper(task, amqp_queue_name):
+        server = await rpc_server_close(task, amqp_queue_name)
+
+        await server.join()
+
+        return server
+
+    return wrapper
+
+
+@pytest.fixture
+def rpc_client_factory(amqp_url):
+    async def wrapper():
+        client = RpcClient(amqp_url)
+
+        await client.ok()
+
+        return client
+
+    return wrapper
+
+
+@pytest.fixture
+def rpc_client_close(rpc_client_factory, loop):
+    clients = []
+
+    async def wrapper():
+        client = await rpc_client_factory()
+
+        clients.append(client)
+
+        return client
+
+    yield wrapper
+
+    coros = [client.close() for client in clients]
+
+    loop.run_until_complete(asyncio.gather(*coros))

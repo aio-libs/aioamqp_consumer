@@ -1,26 +1,20 @@
 import pytest
 
-from aioamqp_consumer import RpcClient, RpcServer, json_rpc
+from aioamqp_consumer import json_rpc
 
 
 @pytest.mark.asyncio
-async def test_shortcuts(amqp_queue_name, amqp_url):
-    test_data = ['test']
+async def test_rpc(rpc_client_close, rpc_server_close, amqp_queue_name):
+    test_data = 42
 
     @json_rpc(amqp_queue_name)
-    async def local_test_method(payload):
-        return payload
+    async def test_method(*, x):
+        return x
 
-    server = RpcServer(amqp_url, method=local_test_method)
+    await rpc_server_close(test_method, amqp_queue_name)
 
-    client = RpcClient(amqp_url)
+    client = await rpc_client_close()
 
-    remote_test_method = json_rpc.remote(amqp_queue_name)
-
-    test_result = await client.wait(remote_test_method(test_data))
+    test_result = await client.wait(test_method(x=test_data))
 
     assert test_result == test_data
-
-    await client.close()
-
-    await server.stop()

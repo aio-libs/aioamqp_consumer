@@ -3,112 +3,108 @@ import asyncio
 import pytest
 from async_timeout import timeout
 
-from aioamqp_consumer import JsonRpcMethod, RpcClient, RpcMethod, RpcServer
+from aioamqp_consumer import JsonRpcMethod, RpcMethod
 
 
 @pytest.mark.asyncio
-async def test_rpc_smoke(amqp_queue_name, amqp_url):
+async def test_rpc(rpc_client_close, rpc_server_close, amqp_queue_name):
     test_data = b'test'
 
     @RpcMethod.init(amqp_queue_name)
     async def test_method(payload):
         return payload
 
-    server = RpcServer(amqp_url, method=test_method)
+    await rpc_server_close(test_method, amqp_queue_name)
 
-    client = RpcClient(amqp_url)
+    client = await rpc_client_close()
 
     test_result = await client.wait(test_method(test_data))
 
     assert test_result == test_data
 
-    await client.close()
-
-    await server.stop()
-
 
 @pytest.mark.asyncio
-async def test_json_rpc_smoke(amqp_queue_name, amqp_url):
+async def test_json_rpc(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
     @JsonRpcMethod.init(amqp_queue_name)
-    async def square_method(*, x):
+    async def test_method(*, x):
         return x ** 2
 
-    server = RpcServer(amqp_url, method=square_method)
+    await rpc_server_close(test_method, amqp_queue_name)
 
-    client = RpcClient(amqp_url)
+    client = await rpc_client_close()
 
-    test_result = await client.wait(square_method(x=2))
+    test_result = await client.wait(test_method(x=2))
 
     assert test_result == 4
 
-    await client.close()
-
-    await server.stop()
-
 
 @pytest.mark.asyncio
-async def test_rpc_no_payload(amqp_queue_name, amqp_url):
+async def test_rpc_no_payload(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
     test_data = b'test'
 
     @RpcMethod.init(amqp_queue_name)
     async def test_method():
         return test_data
 
-    server = RpcServer(amqp_url, method=test_method)
+    await rpc_server_close(test_method, amqp_queue_name)
 
-    client = RpcClient(amqp_url)
+    client = await rpc_client_close()
 
     test_result = await client.wait(test_method())
 
     assert test_result == test_data
 
-    await client.close()
-
-    await server.stop()
-
 
 @pytest.mark.asyncio
-async def test_rpc_no_wait(amqp_queue_name, amqp_url):
+async def test_rpc_call(
+    rpc_client_factory,
+    rpc_server_close,
+    amqp_queue_name,
+):
     fut = asyncio.Future()
 
     @RpcMethod.init(amqp_queue_name)
     async def test_method():
-        fut.set_result(None)
+        fut.set_result(True)
 
-    server = RpcServer(amqp_url, method=test_method)
+    await rpc_server_close(test_method, amqp_queue_name)
 
-    client = RpcClient(amqp_url)
+    client = await rpc_client_factory()
 
-    await client.wait(test_method(), wait=False)
+    resp = await client.call(test_method())
+
+    assert resp is None
 
     assert not client._map
 
     await client.close()
 
     async with timeout(1):
-        await fut
-
-    await server.stop()
+        assert await fut
 
 
 @pytest.mark.asyncio
-async def test_rpc_remote_init(amqp_queue_name, amqp_url):
+async def test_rpc_remote(rpc_client_close, rpc_server_close, amqp_queue_name):
     test_data = b'test'
 
     @RpcMethod.init(amqp_queue_name)
-    async def local_test_method(payload):
+    async def remote_test_method(payload):
         return payload
 
-    server = RpcServer(amqp_url, method=local_test_method)
+    await rpc_server_close(remote_test_method, amqp_queue_name)
 
-    client = RpcClient(amqp_url)
+    client = await rpc_client_close()
 
-    remote_test_method = RpcMethod.remote_init(amqp_queue_name)
+    local_test_method = RpcMethod.remote_init(amqp_queue_name)
 
-    test_result = await client.wait(remote_test_method(test_data))
+    test_result = await client.wait(local_test_method(test_data))
 
     assert test_result == test_data
-
-    await client.close()
-
-    await server.stop()
