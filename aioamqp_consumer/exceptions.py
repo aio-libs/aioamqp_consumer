@@ -44,7 +44,12 @@ class RpcError(Exception):
         except BaseException as exc:
             logger.critical(exc, exc_info=exc)
 
-            return self._dumps(exc)
+            try:
+                return self._dumps(exc)
+            except BaseException as exc:
+                logger.critical(exc, exc_info=exc)
+
+                return self._dumps(pickle.PickleError())
 
     @classmethod
     def loads(cls, pkl):
