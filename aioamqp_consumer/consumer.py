@@ -8,6 +8,7 @@ from .amqp import AMQPMixin
 from .exceptions import Ack, DeadLetter, Reject
 from .log import logger
 from .packer import PackerMixin
+from .run import run
 from .utils import unpartial
 
 
@@ -141,6 +142,10 @@ class Consumer(
             'workers': len(self._workers),
         }
         logger.debug(msg, context)
+
+    def run(self, **kwargs):
+        kwargs['loop'] = self.loop
+        run(self, **kwargs)
 
     async def _remove_worker(self):
         worker = next(iter(self._workers))

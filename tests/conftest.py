@@ -23,11 +23,8 @@ def event_loop(request):
     loop.call_soon(loop.stop)
     loop.run_forever()
 
-    try:
-        loop.run_until_complete(loop.shutdown_asyncgens())
-        loop._default_executor.shutdown(wait=True)
-    except AttributeError:
-        pass
+    loop.run_until_complete(loop.shutdown_asyncgens())
+    loop._default_executor.shutdown(wait=True)
     loop.close()
 
     gc.collect()

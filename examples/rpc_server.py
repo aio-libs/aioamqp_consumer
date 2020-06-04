@@ -1,5 +1,3 @@
-import asyncio
-
 from aioamqp_consumer import JsonRpcMethod, RpcServer
 
 amqp_url = 'amqp://guest:guest@127.0.0.1:5672//'
@@ -15,12 +13,4 @@ async def square(*, x):
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-
-    server = RpcServer(amqp_url, method=square)
-
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        loop.run_until_complete(server.stop())
-    loop.close()
+    RpcServer(amqp_url, method=square).run()
