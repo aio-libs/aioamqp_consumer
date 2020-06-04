@@ -35,6 +35,7 @@ class RpcError(Exception):
         except (
             NotImplementedError,
             AttributeError,
+            TypeError,
             pickle.PickleError,
         ) as exc:
             logger.warning(exc, exc_info=exc)
