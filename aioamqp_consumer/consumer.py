@@ -38,7 +38,7 @@ class Consumer(
         packer=None,
         packer_cls=None,
         _no_packer=False,
-        unmarshal_exc=None,
+        marshal_exc=None,
     ):
         if concurrency <= 0:
             raise NotImplementedError
@@ -87,7 +87,7 @@ class Consumer(
             _no_packer=_no_packer,
         )
 
-        self.unmarshal_exc = unmarshal_exc
+        self.marshal_exc = marshal_exc
 
         self.__monitor = self.loop.create_task(self._monitor())
 
@@ -196,7 +196,7 @@ class Consumer(
                             exc_info=exc,
                         )
 
-                        if self.unmarshal_exc is None:
+                        if self.marshal_exc is None:
                             raise
 
                         raise self.unmarshal_exc from exc

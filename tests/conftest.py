@@ -77,11 +77,12 @@ async def producer(amqp_url):
 
 @pytest.fixture
 def consumer_factory(amqp_url):
-    async def wrapper(task, amqp_queue_name):
+    async def wrapper(task, amqp_queue_name, **kwargs):
         consumer = Consumer(
             amqp_url,
             task,
             amqp_queue_name,
+            **kwargs,
         )
 
         await consumer.ok()
@@ -95,8 +96,8 @@ def consumer_factory(amqp_url):
 def consumer_close(consumer_factory, loop):
     consumers = []
 
-    async def wrapper(task, amqp_queue_name):
-        consumer = await consumer_factory(task, amqp_queue_name)
+    async def wrapper(task, amqp_queue_name, **kwargs):
+        consumer = await consumer_factory(task, amqp_queue_name, **kwargs)
 
         consumers.append(consumer)
 
@@ -115,8 +116,8 @@ def consumer_close(consumer_factory, loop):
 
 @pytest.fixture
 def consumer_join(consumer_close):
-    async def wrapper(task, amqp_queue_name):
-        consumer = await consumer_close(task, amqp_queue_name)
+    async def wrapper(task, amqp_queue_name, **kwargs):
+        consumer = await consumer_close(task, amqp_queue_name, **kwargs)
 
         await consumer.join()
 
@@ -136,10 +137,11 @@ async def amqp_queue_name(producer):
 
 @pytest.fixture
 def rpc_server_factory(amqp_url):
-    async def wrapper(method):
+    async def wrapper(method, **kwargs):
         server = RpcServer(
             amqp_url,
             method=method,
+            **kwargs,
         )
 
         await server.ok()
@@ -153,8 +155,8 @@ def rpc_server_factory(amqp_url):
 def rpc_server_close(rpc_server_factory, loop):
     servers = []
 
-    async def wrapper(method, amqp_queue_name):
-        server = await rpc_server_factory(method)
+    async def wrapper(method, amqp_queue_name, **kwargs):
+        server = await rpc_server_factory(method, **kwargs)
 
         servers.append(server)
 
@@ -169,8 +171,8 @@ def rpc_server_close(rpc_server_factory, loop):
 
 @pytest.fixture
 def rpc_server_join(rpc_server_close):
-    async def wrapper(task, amqp_queue_name):
-        server = await rpc_server_close(task, amqp_queue_name)
+    async def wrapper(task, amqp_queue_name, **kwargs):
+        server = await rpc_server_close(task, amqp_queue_name, **kwargs)
 
         await server.join()
 
@@ -181,8 +183,8 @@ def rpc_server_join(rpc_server_close):
 
 @pytest.fixture
 def rpc_client_factory(amqp_url):
-    async def wrapper():
-        client = RpcClient(amqp_url)
+    async def wrapper(**kwargs):
+        client = RpcClient(amqp_url, **kwargs)
 
         await client.ok()
 
@@ -195,8 +197,8 @@ def rpc_client_factory(amqp_url):
 def rpc_client_close(rpc_client_factory, loop):
     clients = []
 
-    async def wrapper():
-        client = await rpc_client_factory()
+    async def wrapper(**kwargs):
+        client = await rpc_client_factory(**kwargs)
 
         clients.append(client)
 

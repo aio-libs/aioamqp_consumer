@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from collections import defaultdict
 from functools import partial, partialmethod
@@ -331,16 +332,45 @@ class RpcMethod(PackerMixin):
             if properties.content_type != self.packer.content_type:
                 raise NotImplementedError
 
-            obj = await self.packer.unmarshal(payload)
+            try:
+                obj = await self.packer.unmarshal(payload)
 
-            args, kwargs = self.packer.unpack(obj)
+                args, kwargs = self.packer.unpack(obj)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                amqp_mixin._log_task(
+                    'unmarshal error',
+                    logging.DEBUG,
+                    exc_info=exc,
+                )
+
+                if amqp_mixin.marshal_exc is None:
+                    raise
+
+                raise amqp_mixin.marshal_exc from exc
 
             ret = self.method(*args, **kwargs)
 
             if self._method_is_coro:
                 ret = await ret
 
-            payload = await self.packer.marshal(ret)
+            try:
+                payload = await self.packer.marshal(ret)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                amqp_mixin._log_task(
+                    'marshal error',
+                    logging.DEBUG,
+                    exc_info=exc,
+                )
+
+                if amqp_mixin.marshal_exc is None:
+                    raise
+
+                raise amqp_mixin.marshal_exc from exc
+
             _properties['content_type'] = self.packer.content_type
         except asyncio.CancelledError:
             raise
