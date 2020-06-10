@@ -361,20 +361,14 @@ class RpcMethod(PackerMixin):
         if properties.reply_to is not None:
             _properties['correlation_id'] = properties.correlation_id
 
-            try:
-                await amqp_mixin._basic_publish(
-                    payload=payload,
-                    exchange_name=self.exchange_name,
-                    routing_key=properties.reply_to,
-                    properties=_properties,
-                    mandatory=self.mandatory,
-                    immediate=self.immediate,
-                )
-            # TODO: not sure, seems Consumer doing that automatically
-            except AioamqpException as exc:
-                logger.warning(exc, exc_info=exc)
-
-                raise Reject from exc
+            await amqp_mixin._basic_publish(
+                payload=payload,
+                exchange_name=self.exchange_name,
+                routing_key=properties.reply_to,
+                properties=_properties,
+                mandatory=self.mandatory,
+                immediate=self.immediate,
+            )
 
 
 class RpcServer(Consumer):

@@ -320,3 +320,35 @@ async def test_on_error_shutdown(
     test_result = await client.wait(test_method())
 
     test_result == test_data
+
+
+@pytest.mark.asyncio
+async def test_rpc_server_down(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    test_data = b'test'
+
+    calls = 0
+
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method(payload):
+        nonlocal calls
+
+        if not calls:
+            server._transport.close()
+
+        calls += 1
+
+        return payload
+
+    server = await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    test_result = await client.wait(test_method(test_data))
+
+    assert test_result == test_data
+
+    assert calls == 2
