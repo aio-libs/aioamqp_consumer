@@ -421,3 +421,6 @@ class RpcServer(Consumer):
         self.close()
 
         return self.wait_closed()
+
+    async def __aexit__(self, *exc_info):
+        await self.stop()

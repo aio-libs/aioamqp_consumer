@@ -142,10 +142,6 @@ class Consumer(
         }
         logger.debug(msg, context)
 
-    def run(self, **kwargs):
-        kwargs['loop'] = self.loop
-        run(self, **kwargs)
-
     async def _remove_worker(self):
         worker = next(iter(self._workers))
 
@@ -529,6 +525,10 @@ class Consumer(
         msg = 'Consumer (queue: %(queue)s) is closing'
         context = {'queue': self.queue_name}
         logger.debug(msg, context)
+
+    def run(self, **kwargs):
+        kwargs['loop'] = self.loop
+        run(self, **kwargs)
 
     async def wait_closed(self):
         assert self._closed, 'Must be closed first'
