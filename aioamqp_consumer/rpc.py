@@ -79,7 +79,7 @@ class RpcClient(Consumer):
     exclusive = True
 
     def __init__(self, amqp_url, **kwargs):
-        kwargs.setdefault('queue_kwargs', {'exclusive': True})
+        kwargs['queue_kwargs'] = {'exclusive': True}
         kwargs['concurrency'] = 1
         kwargs['_no_packer'] = True
 
@@ -170,8 +170,6 @@ class RpcClient(Consumer):
         if not wait and wait_response:
             raise NotImplementedError
 
-        payload = await rpc_call.request()
-
         await self.ok()
 
         await self._ensure(
@@ -181,6 +179,8 @@ class RpcClient(Consumer):
             exchange_kwargs=rpc_call.exchange_kwargs,
             routing_key=rpc_call.queue_name,
         )
+
+        payload = await rpc_call.request()
 
         _properties = {'content_type': rpc_call.content_type}
 
@@ -380,7 +380,6 @@ class RpcMethod(PackerMixin):
 class RpcServer(Consumer):
 
     def __init__(self, amqp_url, *, method, **kwargs):
-        kwargs.setdefault('tasks_per_worker', 1)
         kwargs['_no_packer'] = True
 
         args = (amqp_url, method.call, method.queue_name)

@@ -8,18 +8,11 @@ from .log import logger
 
 class Packer(abc.ABC):
 
-    ARGS = 'a'
-    KWARGS = 'k'
-    empty_payload = b''
-
     def __init__(self):
         self._marshal_is_coro = asyncio.iscoroutinefunction(self._marshal)
         self._unmarshal_is_coro = asyncio.iscoroutinefunction(self._unmarshal)
 
     async def marshal(self, obj):
-        if obj == self.empty_payload:
-            return self.empty_payload
-
         obj = self._marshal(obj)
 
         if self._marshal_is_coro:
@@ -50,6 +43,14 @@ class Packer(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def pack(self, *args, **kwargs):
+        pass
+
+    @abc.abstractmethod
+    def unpack(self, obj):
+        pass
+
+    @abc.abstractmethod
     async def _marshal(self, obj):
         pass
 
@@ -57,45 +58,15 @@ class Packer(abc.ABC):
     async def _unmarshal(self, obj):
         pass
 
-    def pack(self, *args, **kwargs):
-        payload = {}
-
-        if args:
-            payload[self.ARGS] = args
-
-        if kwargs:
-            payload[self.KWARGS] = kwargs
-
-        if payload:
-            return payload
-
-        return self.empty_payload
-
-    def unpack(self, obj):
-        args = obj.get(self.ARGS, [])
-
-        kwargs = obj.get(self.KWARGS, {})
-
-        return args, kwargs
-
 
 class RawPacker(Packer):
+
+    none_payload = b'#!n'
+    empty_payload = b'#!e'
 
     @property
     def content_type(self):
         return 'application/octet-stream'
-
-    def _marshal(self, obj):
-        if obj is None:
-            return self.empty_payload
-
-        return obj
-
-    def _unmarshal(self, obj):
-        if obj == self.empty_payload:
-            return None
-
-        return obj
 
     def pack(self, *args, **kwargs):
         if kwargs:
@@ -112,15 +83,30 @@ class RawPacker(Packer):
     def unpack(self, obj):
         args = []
 
-        if obj is not None:
+        if obj != self.empty_payload:
             args.append(obj)
 
         kwargs = {}
 
         return args, kwargs
 
+    def _marshal(self, obj):
+        if obj is None:
+            return self.none_payload
+
+        return obj
+
+    def _unmarshal(self, obj):
+        if obj == self.none_payload:
+            return None
+
+        return obj
+
 
 class JsonPacker(Packer):
+
+    ARGS = 'a'
+    KWARGS = 'k'
 
     def __init__(self, *, executor=None):
         self.executor = executor
@@ -137,6 +123,24 @@ class JsonPacker(Packer):
 
     def _loads(self, obj):
         return json.loads(obj)
+
+    def pack(self, *args, **kwargs):
+        payload = {}
+
+        if args:
+            payload[self.ARGS] = args
+
+        if kwargs:
+            payload[self.KWARGS] = kwargs
+
+        return payload
+
+    def unpack(self, obj):
+        args = obj.get(self.ARGS, [])
+
+        kwargs = obj.get(self.KWARGS, {})
+
+        return args, kwargs
 
     async def _marshal(self, obj):
         obj = await self.loop.run_in_executor(self.executor, self._dumps, obj)

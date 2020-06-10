@@ -17,7 +17,7 @@ class Consumer(
     AMQPMixin,
 ):
 
-    _consumer_tag = None
+    _consumer_tag = _queue_info = _consumer_info = None
 
     exclusive = False
 
@@ -28,7 +28,7 @@ class Consumer(
         queue_name,
         *,
         concurrency=1,
-        tasks_per_worker=3,
+        tasks_per_worker=1,
         task_timeout=None,
         reconnect_delay=5.0,
         reject_exceptions=tuple(),
@@ -74,7 +74,6 @@ class Consumer(
         self._down = asyncio.Event()
         self._down.set()
         self._up = asyncio.Event()
-        self._queue_info = None
 
         _fn = unpartial(self.task)
         self._task_is_coro = asyncio.iscoroutinefunction(_fn)
@@ -351,9 +350,11 @@ class Consumer(
         }
         logger.debug(msg, context)
 
+        self._after_scale()
+
     async def join(self, delay=1, timeout=None, wait_ok=True):
         queue_kwargs = self.queue_kwargs.copy()
-        queue_kwargs.setdefault('passive', True)
+        queue_kwargs['passive'] = True
 
         async with async_timeout.timeout(timeout):
             while True:
@@ -382,6 +383,12 @@ class Consumer(
     def _after_connect(self):
         pass
 
+    def _after_consume(self):
+        pass
+
+    def _after_scale(self):
+        pass
+
     def _wrap(self, payload, properties):
         return self.task(payload, properties)
 
@@ -397,11 +404,22 @@ class Consumer(
 
                 self._after_connect()
 
-                self._up.set()
+                self._consumer_info = await self._basic_consume(
+                    self._consume_callback,
+                    self.queue_name,
+                    no_ack=False,
+                    exclusive=self.exclusive,
+                )
+
+                self._consumer_tag = self._consumer_info['consumer_tag']
+
+                self._after_consume()
 
                 msg = 'Consumer (queue: %(queue)s) connected to amqp'
                 context = {'queue': self.queue_name}
                 logger.debug(msg, context)
+
+                await self.scale(self._concurrency, wait_ok=False)
 
                 break
             except AioamqpException as exc:
@@ -412,27 +430,9 @@ class Consumer(
                 await asyncio.sleep(self.reconnect_delay)
 
     async def _consume(self):
-        while True:
-            await self._connect()
+        await self._connect()
 
-            try:
-                await self.scale(self._concurrency, wait_ok=False)
-            except AioamqpException:
-                continue
-
-            try:
-                consumer = await self._basic_consume(
-                    self._consume_callback,
-                    self.queue_name,
-                    no_ack=False,
-                    exclusive=self.exclusive,
-                )
-            except AioamqpException:
-                continue
-            else:
-                break
-
-        self._consumer_tag = consumer['consumer_tag']
+        self._up.set()
 
         self._down.clear()
 
@@ -510,7 +510,7 @@ class Consumer(
                     context = {'queue': self.queue_name}
                     logger.debug(msg, context)
 
-        self._consumer_tag = None
+        self._consumer_tag = self._queue_info = self._consumer_info = None
 
         await super()._disconnect()
 

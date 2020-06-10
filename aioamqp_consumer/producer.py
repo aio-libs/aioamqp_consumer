@@ -55,8 +55,6 @@ class Producer(
                 await self.ok()
 
                 return await fn(*args, **kwargs)
-            # TODO: check OSError/dns/etc to disconnect
-            # change from 0.1.x versions
             except AioamqpException:
                 await self._disconnect()
                 raise
@@ -245,7 +243,6 @@ class Producer(
         return self._disconnect()
 
     async def __aenter__(self):
-        await self.ok()
         return self
 
     async def __aexit__(self, *exc_info):
