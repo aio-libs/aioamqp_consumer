@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from aioamqp import AioamqpException
 from async_timeout import timeout
 
 from aioamqp_consumer import JsonRpcMethod, RpcError, RpcMethod
@@ -24,7 +25,7 @@ async def test_rpc(rpc_client_close, rpc_server_close, amqp_queue_name):
 
 
 @pytest.mark.asyncio
-async def test_json_rpc(
+async def test_json_rpc_kwargs(
     rpc_client_close,
     rpc_server_close,
     amqp_queue_name,
@@ -40,6 +41,84 @@ async def test_json_rpc(
     test_result = await client.wait(test_method(x=2))
 
     assert test_result == 4
+
+
+@pytest.mark.asyncio
+async def test_json_rpc_args(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    @JsonRpcMethod.init(amqp_queue_name)
+    async def test_method(x):
+        return x ** 2
+
+    await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    test_result = await client.wait(test_method(2))
+
+    assert test_result == 4
+
+
+@pytest.mark.asyncio
+async def test_json_empty_payload(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    test_data = 42
+
+    @JsonRpcMethod.init(amqp_queue_name)
+    async def test_method():
+        return test_data
+
+    await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    test_result = await client.wait(test_method())
+
+    assert test_result == test_data
+
+
+@pytest.mark.asyncio
+async def test_rpc_none_arg(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method(obj):
+        assert obj is None
+
+    await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    test_result = await client.wait(test_method(None))
+
+    assert test_result is None
+
+
+@pytest.mark.asyncio
+async def test_rpc_no_result(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method():
+        pass
+
+    await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    test_result = await client.wait(test_method())
+
+    assert test_result is None
 
 
 @pytest.mark.asyncio
@@ -59,6 +138,28 @@ async def test_rpc_no_payload(
     client = await rpc_client_close()
 
     test_result = await client.wait(test_method())
+
+    assert test_result == test_data
+
+
+@pytest.mark.asyncio
+async def test_rpc_empty_payload(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    test_data = b''
+
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method(payload):
+        assert payload == test_data
+        return test_data
+
+    await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    test_result = await client.wait(test_method(test_data))
 
     assert test_result == test_data
 
@@ -191,3 +292,98 @@ async def test_rpc_error(rpc_client_close, rpc_server_close, amqp_queue_name):
 
     # Can't pickle local object
     assert isinstance(exc_info.value.err, AttributeError)
+
+
+@pytest.mark.asyncio
+async def test_on_error_shutdown(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    test_data = b'result'
+
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method():
+        return test_data
+
+    await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    client._transport.close()
+
+    with pytest.raises(AioamqpException):
+        await client.wait(test_method())
+
+    await asyncio.sleep(0.2)
+
+    test_result = await client.wait(test_method())
+
+    test_result == test_data
+
+
+@pytest.mark.asyncio
+async def test_rpc_server_down(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    test_data = b'test'
+
+    calls = 0
+
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method(payload):
+        nonlocal calls
+
+        if not calls:
+            server._transport.close()
+
+        calls += 1
+
+        return payload
+
+    server = await rpc_server_close(test_method, amqp_queue_name)
+
+    client = await rpc_client_close()
+
+    test_result = await client.wait(test_method(test_data))
+
+    assert test_result == test_data
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_rpc_marshal_exc(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+    @RpcMethod.init(amqp_queue_name)
+    async def test_method():
+        pass
+
+    calls = 0
+
+    async def _unmarshal(obj):
+        nonlocal calls
+        calls += 1
+        raise ValueError
+
+    test_method.packer.unmarshal = _unmarshal
+
+    await rpc_server_close(
+        test_method,
+        amqp_queue_name,
+        marshal_exc=ZeroDivisionError,
+    )
+
+    client = await rpc_client_close()
+
+    with pytest.raises(RpcError) as exc_info:
+        await client.wait(test_method())
+
+    assert isinstance(exc_info.value.err, ZeroDivisionError)
+
+    assert calls == 1

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from collections import defaultdict
 from functools import partial, partialmethod
@@ -79,7 +80,7 @@ class RpcClient(Consumer):
     exclusive = True
 
     def __init__(self, amqp_url, **kwargs):
-        kwargs.setdefault('queue_kwargs', {'exclusive': True})
+        kwargs['queue_kwargs'] = {'exclusive': True}
         kwargs['concurrency'] = 1
         kwargs['_no_packer'] = True
 
@@ -170,8 +171,6 @@ class RpcClient(Consumer):
         if not wait and wait_response:
             raise NotImplementedError
 
-        payload = await rpc_call.request()
-
         await self.ok()
 
         await self._ensure(
@@ -181,6 +180,8 @@ class RpcClient(Consumer):
             exchange_kwargs=rpc_call.exchange_kwargs,
             routing_key=rpc_call.queue_name,
         )
+
+        payload = await rpc_call.request()
 
         _properties = {'content_type': rpc_call.content_type}
 
@@ -331,16 +332,45 @@ class RpcMethod(PackerMixin):
             if properties.content_type != self.packer.content_type:
                 raise NotImplementedError
 
-            obj = await self.packer.unmarshal(payload)
+            try:
+                obj = await self.packer.unmarshal(payload)
 
-            args, kwargs = self.packer.unpack(obj)
+                args, kwargs = self.packer.unpack(obj)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                amqp_mixin._log_task(
+                    'unmarshal error',
+                    logging.DEBUG,
+                    exc_info=exc,
+                )
+
+                if amqp_mixin.marshal_exc is None:
+                    raise
+
+                raise amqp_mixin.marshal_exc from exc
 
             ret = self.method(*args, **kwargs)
 
             if self._method_is_coro:
                 ret = await ret
 
-            payload = await self.packer.marshal(ret)
+            try:
+                payload = await self.packer.marshal(ret)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                amqp_mixin._log_task(
+                    'marshal error',
+                    logging.DEBUG,
+                    exc_info=exc,
+                )
+
+                if amqp_mixin.marshal_exc is None:
+                    raise
+
+                raise amqp_mixin.marshal_exc from exc
+
             _properties['content_type'] = self.packer.content_type
         except asyncio.CancelledError:
             raise
@@ -361,26 +391,19 @@ class RpcMethod(PackerMixin):
         if properties.reply_to is not None:
             _properties['correlation_id'] = properties.correlation_id
 
-            try:
-                await amqp_mixin._basic_publish(
-                    payload=payload,
-                    exchange_name=self.exchange_name,
-                    routing_key=properties.reply_to,
-                    properties=_properties,
-                    mandatory=self.mandatory,
-                    immediate=self.immediate,
-                )
-            # TODO: not sure, seems Consumer doing that automatically
-            except AioamqpException as exc:
-                logger.warning(exc, exc_info=exc)
-
-                raise Reject from exc
+            await amqp_mixin._basic_publish(
+                payload=payload,
+                exchange_name=self.exchange_name,
+                routing_key=properties.reply_to,
+                properties=_properties,
+                mandatory=self.mandatory,
+                immediate=self.immediate,
+            )
 
 
 class RpcServer(Consumer):
 
     def __init__(self, amqp_url, *, method, **kwargs):
-        kwargs.setdefault('tasks_per_worker', 1)
         kwargs['_no_packer'] = True
 
         args = (amqp_url, method.call, method.queue_name)
@@ -398,3 +421,6 @@ class RpcServer(Consumer):
         self.close()
 
         return self.wait_closed()
+
+    async def __aexit__(self, *exc_info):
+        await self.stop()
