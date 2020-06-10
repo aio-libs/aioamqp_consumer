@@ -5,7 +5,7 @@ from .producer import Producer
 from .rpc import RpcClient, RpcMethod, RpcServer
 from .run import run
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 
 
 class JsonConsumer(Consumer):
