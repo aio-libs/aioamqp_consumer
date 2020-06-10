@@ -400,6 +400,8 @@ class Consumer(
 
                 self._after_connect()
 
+                await self.scale(self._concurrency, wait_ok=False)
+
                 self._consumer_info = await self._basic_consume(
                     self._consume_callback,
                     self.queue_name,
@@ -414,8 +416,6 @@ class Consumer(
                 msg = 'Consumer (queue: %(queue)s) connected to amqp'
                 context = {'queue': self.queue_name}
                 logger.debug(msg, context)
-
-                await self.scale(self._concurrency, wait_ok=False)
 
                 break
             except AioamqpException as exc:
