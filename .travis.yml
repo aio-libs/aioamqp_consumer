@@ -42,11 +42,9 @@ notifications:
 deploy:
   provider: pypi
   user: hellysmile
-  distributions: sdist
   password:
     secure: Ve66u8rg/dd0cEdE7cL09geLYnBsC+FxCfu4GBjjox1m2uB64rjPWbrj4b295slzFaeZEkRyrdSnsk2iPnZdfpQrHQzN/a3nophef3/HIAajTyImYKBa0HgNIsGJf8GYTouUftwZQvlgkIlFHFEAYmsnY/tjro6LO2F8KUNCzaS6oBtohdiB79dUGQaU7ki8tUcGFwqOmEFYGjMB1WlUXiymMoa0tyBwI63Fdc2cLuAxQ+q6GCSrPBrtkCtCyNBWqM56m0O8q3R0Daah09z7n6YPV7L7xvoN1IxX4Y+EyJCjyMqdOMST2GS4oP+lgQegF/GsS5Tq16ep/pftg1L9NctCcERUhuPmtaPry0IHcqwxlM3b6isrA0bWnEKFuwwRZKfN3Fkvb735VNdm8Oqv9nL7RCh+yO68QnFnFsBJUcKF5eO4RrUpZ3yS0tQ2a9I6LpDAy7D53IvX/UjdQUH4oN1HtuVLkIwA/+Tk6J0od26OM8BgXCXejfdjyyqPMwVCaWVUGohiS4MT7BLcxFTKEWm+khTkLbJFSqgkm76KlKSdCgxWAnFElQQ0aFALFQc8Fn0bGap39tpM4q9ZYaqUG/UEWRjoifaNtzJugoAoLm1s/yU1d1UlCYX0/6GoxZcCDSHyw+JIe2/jWk05JeVjCMo1sY1gBgKZNDekmu7VFAo=
   on:
     tags: true
-    repo: aio-libs/aioamqp_consumer
     all_branches: true
     python: 3.7
