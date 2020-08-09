@@ -27,6 +27,7 @@ class Consumer(
         task,
         queue_name,
         *,
+        debug=False,
         concurrency=1,
         tasks_per_worker=1,
         task_timeout=None,
@@ -54,6 +55,7 @@ class Consumer(
         self.amqp_url = amqp_url
         self.task = task
         self.queue_name = queue_name
+        self.debug = debug
         self._concurrency = concurrency
         self.tasks_per_worker = tasks_per_worker
         self.task_timeout = task_timeout
@@ -527,6 +529,7 @@ class Consumer(
         logger.debug(msg, context)
 
     def run(self, **kwargs):
+        kwargs['debug'] = kwargs.pop('debug', self.debug)
         kwargs['loop'] = self.loop
         run(self, **kwargs)
 

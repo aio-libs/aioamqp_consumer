@@ -34,6 +34,9 @@ setup(
         'aiorun>=2020.6.1',
         'async_timeout>=3.0.0',
     ],
+    extras_require={
+        'debug': ['aioreloader'],
+    },
     packages=['aioamqp_consumer'],
     include_package_data=True,
     zip_safe=False,
