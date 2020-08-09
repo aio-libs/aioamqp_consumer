@@ -38,3 +38,15 @@ cache:
 
 notifications:
   email: false
+
+deploy:
+  provider: pypi
+  user: hellysmile
+  distributions: sdist
+  password:
+    secure: gcoyZhvGIgb5kYwuqiZGzY2YZ67XGtI+CFQVd9rnDH3YMMiRzsJQYhzDx+Q3t6ai9JBNSP8GMPW0qAWnFr3AI6RDYHaNemB57/5N742U7dmtOj111pWJLj/oSIjH8xyJEAAxu8KGeYyKDk0gKfoWqrBOQ8C8Dm7wkR9w5OvycVYAr1Q3ZIqGbQi3BeKXe3H6b4n4sqsy6YeLy6Z5Cjo13DXPAX/WOjW+3P7F8IwHM0RhPFdS3PMrk+fCIqxSX9OHxVYr9z13RE0gPcsvxIWgUSQ5gKJK7nnddCf++iq0RDds6wkJCvUZLgszJhaesiVMDuEX31mMpxA6oRX/p1ruCULuqbwWXAbjTHro3Z7F6t4yE11jBQh0uE8AiQe9BBAUUATFhw4HWTiQtYE0FkA1PmDo0aMaqxYzSHsJwsxoxtOP5jqH0GkjFWsrA8iIrqp0BtVyPqTkLctWMiVjH/+L5XTat89pGkIp51OFpS8j+jMiT/asjcOowDYatRma4Imr55YzryINg81lBtRdXTZfmMaSsbkkWS9OqLitTQ1J6glnFqYHnwhk8EZRMkaaqIaU+bmgcHI5+iJr1Urhyc9OCNCAfd2i2frU61z3yiUqNwfelVNIX8WhRCxtmWt7opxO+d8w75AbpZsL1w3rAcLuBD8rD5hWyfOPUY2kyLAjuNc=
+  on:
+    tags: true
+    repo: aio-libs/aioamqp_consumer
+    all_branches: true
+    python: 3.7
