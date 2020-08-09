@@ -39,12 +39,12 @@ cache:
 notifications:
   email: false
 
-deploy:
-  provider: pypi
-  user: hellysmile
-  password:
-    secure: Uh1HqgSZgOEBJynpt5LdhJNvNUb23sjY2kysVtmsjP4eZ2pbgBSx7TJrStp6cJD4qEa+p5R8sEhRDxNWNhFlSBYAdzglUCzfhP8lwYax5r/k/UmrP67nASvHPER4mTTyqN40QaCgyJ4Sjl8KBGnBFL9akyiNEpsmVWc8GdbcQU0MjqoKmWLJ5UVFxWkM/TXocLpWZbR6Hec6tZEK9R9CLYMSaczp2JUMMjLADiYXeLtQs7+wQssbMfcN3yBw8wLnUJG2AbpSdDu6B+J+XooXvd2YMRXgiCSUXzgtIkgrFbEeugvTAwl8JCICjnrKy5ztQj4DOeGGODVCsy/d4mzMWnRyxXlG9A6uAcyRRALw+czhGysinEsgXSRqi+m/O9XXlH982Scp7PKRzeHTGo+7ognJbQ45Y7HJBKv89dlYAb/yxqKVaegNNJwL9QL8eLk4JhqRALFHdb7bPdC/SoIWw4TNXULArnLULe5YFSMAfUDtcIT5cVMjdseYfQo/GMuaHImEorjzbg7I55EcHl5qtJtPLJMaNwtsF0nqckawA3C+fs3pYjmPY2tca1HC3kDMIAllQ6JKm3ZLJtRr0VI18dkAcDMfx1J8GdzIo+e5o8TsRT2KO/6ss5SsW1umYSxOvUZZ30QuoY9Y/XW6CCqNZb6IYnsw4+dTcFeoZiXTJdI=
-  on:
-    tags: true
-    all_branches: true
-    python: 3.7
+# deploy:
+#   provider: pypi
+#   user: hellysmile
+#   password:
+#     secure: Uh1HqgSZgOEBJynpt5LdhJNvNUb23sjY2kysVtmsjP4eZ2pbgBSx7TJrStp6cJD4qEa+p5R8sEhRDxNWNhFlSBYAdzglUCzfhP8lwYax5r/k/UmrP67nASvHPER4mTTyqN40QaCgyJ4Sjl8KBGnBFL9akyiNEpsmVWc8GdbcQU0MjqoKmWLJ5UVFxWkM/TXocLpWZbR6Hec6tZEK9R9CLYMSaczp2JUMMjLADiYXeLtQs7+wQssbMfcN3yBw8wLnUJG2AbpSdDu6B+J+XooXvd2YMRXgiCSUXzgtIkgrFbEeugvTAwl8JCICjnrKy5ztQj4DOeGGODVCsy/d4mzMWnRyxXlG9A6uAcyRRALw+czhGysinEsgXSRqi+m/O9XXlH982Scp7PKRzeHTGo+7ognJbQ45Y7HJBKv89dlYAb/yxqKVaegNNJwL9QL8eLk4JhqRALFHdb7bPdC/SoIWw4TNXULArnLULe5YFSMAfUDtcIT5cVMjdseYfQo/GMuaHImEorjzbg7I55EcHl5qtJtPLJMaNwtsF0nqckawA3C+fs3pYjmPY2tca1HC3kDMIAllQ6JKm3ZLJtRr0VI18dkAcDMfx1J8GdzIo+e5o8TsRT2KO/6ss5SsW1umYSxOvUZZ30QuoY9Y/XW6CCqNZb6IYnsw4+dTcFeoZiXTJdI=
+#   on:
+#     tags: true
+#     all_branches: true
+#     python: 3.7
