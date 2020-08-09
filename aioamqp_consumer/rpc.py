@@ -50,6 +50,8 @@ class RpcCall:
         mandatory,
         immediate,
         packer,
+        method,
+        _method_is_coro,
     ):
         self.args = args
         self.kwargs = kwargs
@@ -61,6 +63,8 @@ class RpcCall:
         self.mandatory = mandatory
         self.immediate = immediate
         self.packer = packer
+        self.method = method
+        self._method_is_coro = _method_is_coro
 
     @property
     def content_type(self):
@@ -73,6 +77,22 @@ class RpcCall:
 
     def response(self, fut, *, timeout):
         return RpcResponse(fut, packer=self.packer, timeout=timeout)
+
+    async def _debug_response(self):
+        request = await self.request()
+
+        obj = await self.packer.unmarshal(request)
+
+        args, kwargs = self.packer.unpack(obj)
+
+        ret = self.method(*args, **kwargs)
+
+        if self._method_is_coro:
+            ret = await ret
+
+        payload = await self.packer.marshal(ret)
+
+        return await self.packer.unmarshal(payload)
 
 
 class RpcClient(Consumer):
@@ -147,7 +167,8 @@ class RpcClient(Consumer):
     async def _connect(self):
         self.queue_name = ''
 
-        await super()._connect()
+        if not self.debug:
+            await super()._connect()
 
     async def warmup(self, method):
         await self.ok()
@@ -160,6 +181,10 @@ class RpcClient(Consumer):
             routing_key=method.routing_key,
         )
 
+    async def ok(self, timeout=None):
+        if not self.debug:
+            return await super().ok(timeout=timeout)
+
     async def call(
         self,
         rpc_call,
@@ -168,6 +193,9 @@ class RpcClient(Consumer):
         wait_response=False,
         timeout=None,
     ):
+        if self.debug:
+            return await rpc_call._debug_response()
+
         if not wait and wait_response:
             raise NotImplementedError
 
@@ -323,6 +351,8 @@ class RpcMethod(PackerMixin):
             mandatory=self.mandatory,
             immediate=self.immediate,
             packer=self.packer,
+            method=self.method,
+            _method_is_coro=self._method_is_coro,
         )
 
     async def call(self, payload, properties, *, amqp_mixin):

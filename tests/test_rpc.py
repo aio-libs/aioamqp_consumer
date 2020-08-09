@@ -387,3 +387,26 @@ async def test_rpc_marshal_exc(
     assert isinstance(exc_info.value.err, ZeroDivisionError)
 
     assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_rpc_client_debug(
+    rpc_client_close,
+    amqp_queue_name,
+):
+
+    calls = 0
+
+    @JsonRpcMethod.init(amqp_queue_name)
+    async def test_method():
+        nonlocal calls
+        calls += 1
+        return 'debug'
+
+    client = await rpc_client_close(debug=True)
+
+    ret = client.wait(test_method())
+
+    assert 'debug' == await ret
+
+    assert calls == 1
