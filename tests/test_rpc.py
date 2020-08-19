@@ -405,8 +405,37 @@ async def test_rpc_client_debug(
 
     client = await rpc_client_close(debug=True)
 
-    ret = client.wait(test_method())
+    ret = await client.wait(test_method())
 
-    assert 'debug' == await ret
+    assert 'debug' == ret
 
     assert calls == 1
+
+
+class FatalError(Exception):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_rpc_fatal_exceptions(
+    rpc_client_close,
+    rpc_server_close,
+    amqp_queue_name,
+):
+
+    @JsonRpcMethod.init(
+        amqp_queue_name,
+        auto_reject=True,
+        fatal_exceptions=(FatalError,),
+    )
+    async def test_method():
+        raise FatalError
+
+    client = await rpc_client_close()
+
+    await rpc_server_close(test_method, amqp_queue_name)
+
+    with pytest.raises(RpcError) as exc_info:
+        await client.wait(test_method())
+
+    assert isinstance(exc_info.value.err, FatalError)

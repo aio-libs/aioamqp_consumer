@@ -276,6 +276,7 @@ class RpcMethod(PackerMixin):
         packer,
         auto_reject,
         auto_reject_delay,
+        fatal_exceptions,
     ):
         self.method = method
         self.queue_name = queue_name
@@ -286,6 +287,7 @@ class RpcMethod(PackerMixin):
         self.packer = packer
         self.auto_reject = auto_reject
         self.auto_reject_delay = auto_reject_delay
+        self.fatal_exceptions = fatal_exceptions
 
         _fn = unpartial(self.method)
         self._method_is_coro = asyncio.iscoroutinefunction(_fn)
@@ -309,6 +311,7 @@ class RpcMethod(PackerMixin):
         packer_cls=None,
         auto_reject=False,
         auto_reject_delay=None,
+        fatal_exceptions=tuple(),
     ):
         if queue_kwargs is None:
             queue_kwargs = {}
@@ -333,6 +336,7 @@ class RpcMethod(PackerMixin):
                 packer=packer,
                 auto_reject=auto_reject,
                 auto_reject_delay=auto_reject_delay,
+                fatal_exceptions=fatal_exceptions,
             )
 
             return method
@@ -409,7 +413,7 @@ class RpcMethod(PackerMixin):
         except Exception as exc:
             logger.warning(exc, exc_info=exc)
 
-            if self.auto_reject:
+            if self.auto_reject and not isinstance(exc, self.fatal_exceptions):
                 if self.auto_reject_delay is not None:
                     await asyncio.sleep(self.auto_reject_delay)
 
